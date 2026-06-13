@@ -11,6 +11,13 @@ export interface SalesOrderItem {
 
 export interface SalesOrder extends BaseEntity {
   customerName: string;
+  customerAddress?: string;
+  responsiblePersonId?: string;
+  responsiblePerson?: {
+    id: string;
+    name: string;
+    email: string;
+  };
   status: string;
   items?: SalesOrderItem[];
 }

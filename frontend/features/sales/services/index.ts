@@ -7,6 +7,8 @@ export async function getSalesOrders(): Promise<SalesOrder[]> {
 
 export async function createSalesOrder(data: {
   customerName: string;
+  customerAddress?: string;
+  responsiblePersonId?: string;
   items: { productId: string; quantity: number }[];
 }): Promise<SalesOrder> {
   return fetchApi('/sales', {
