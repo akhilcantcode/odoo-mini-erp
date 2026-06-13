@@ -13,9 +13,9 @@ export class ManufacturingController {
    */
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const orders = await this.service.list(companyId);
       res.json(orders);
@@ -29,9 +29,9 @@ export class ManufacturingController {
    */
   getById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const order = await this.service.getById(req.params.id, companyId);
       res.json(order);
@@ -48,9 +48,9 @@ export class ManufacturingController {
    */
   create = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const order = await this.service.create(req.body, companyId);
       res.status(201).json(order);
@@ -67,9 +67,9 @@ export class ManufacturingController {
    */
   start = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const result = await this.service.start(req.params.id, companyId);
       res.json(result);
@@ -89,9 +89,9 @@ export class ManufacturingController {
    */
   complete = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const result = await this.service.complete(req.params.id, companyId);
       res.json(result);

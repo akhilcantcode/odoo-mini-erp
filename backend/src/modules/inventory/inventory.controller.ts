@@ -13,9 +13,9 @@ export class InventoryController {
    */
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const inventory = await this.service.list(companyId);
       res.json(inventory);
@@ -29,9 +29,9 @@ export class InventoryController {
    */
   adjust = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const result = await this.service.adjust(req.body, companyId);
       res.json(result);
@@ -48,9 +48,9 @@ export class InventoryController {
    */
   getLedger = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const productId = req.query.productId as string | undefined;
       const ledger = await this.service.getLedger(companyId, productId);

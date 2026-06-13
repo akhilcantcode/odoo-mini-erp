@@ -13,9 +13,9 @@ export class ProductController {
    */
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const filters = {
         procurementType: req.query.procurementType as string | undefined,
@@ -33,9 +33,9 @@ export class ProductController {
    */
   getById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const product = await this.service.getById(req.params.id, companyId);
       res.json(product);
@@ -52,9 +52,9 @@ export class ProductController {
    */
   create = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const product = await this.service.create(req.body, companyId);
       res.status(201).json(product);
@@ -71,9 +71,9 @@ export class ProductController {
    */
   update = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const product = await this.service.update(req.params.id, req.body, companyId);
       res.json(product);
@@ -93,9 +93,9 @@ export class ProductController {
    */
   getBom = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const bom = await this.service.getBom(req.params.id, companyId);
       res.json(bom);
@@ -112,9 +112,9 @@ export class ProductController {
    */
   setBom = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
       if (!companyId) {
-        return res.status(400).json({ message: 'x-company-id header is required' });
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
       const bom = await this.service.setBom(req.params.id, req.body, companyId);
       res.status(200).json(bom);
