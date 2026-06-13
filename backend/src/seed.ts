@@ -246,6 +246,8 @@ async function seedCompanyData(companyId: string, companyName: string) {
         data: {
           id: `PO-${String(purchaseOrderCounter++).padStart(5, '0')}`,
           vendorName: po.vendorName,
+          vendorAddress: '456 Supplier Ave, Industrial Zone',
+          responsiblePersonId,
           status: po.status,
           companyId
         }

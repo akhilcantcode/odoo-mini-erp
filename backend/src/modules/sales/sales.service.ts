@@ -3,14 +3,20 @@ import { SalesRepository } from './sales.repository';
 import { CreateSalesOrderSchema } from './sales.types';
 import { prisma } from '../../config/prisma';
 import { AuditService } from '../audit/audit.service';
+import { PurchaseRepository } from '../purchase/purchase.repository';
+import { ManufacturingRepository } from '../manufacturing/manufacturing.repository';
 
 export class SalesService {
   private repository: SalesRepository;
   private auditService: AuditService;
+  private purchaseRepository: PurchaseRepository;
+  private manufacturingRepository: ManufacturingRepository;
 
   constructor() {
     this.repository = new SalesRepository();
     this.auditService = new AuditService();
+    this.purchaseRepository = new PurchaseRepository();
+    this.manufacturingRepository = new ManufacturingRepository();
   }
 
   /**
@@ -138,24 +144,21 @@ export class SalesService {
     const parsed = CreateSalesOrderSchema.parse(data);
 
     return prisma.$transaction(async (tx) => {
-      // 1. Create the Sales Order
-      const order = await tx.salesOrder.create({
-        data: {
+      // 1. Create the Sales Order using the repository (generates SO-XXXXX sequence ID)
+      const order = await this.repository.create(
+        {
           customerName: parsed.customerName,
-          status: SalesOrderStatus.draft,
-          companyId,
+          customerAddress: parsed.customerAddress,
+          responsiblePersonId: parsed.responsiblePersonId,
+          items: parsed.items,
         },
-      });
+        companyId,
+        tx
+      );
 
-      const itemsData = parsed.items.map((item) => ({
-        orderId: order.id,
-        productId: item.productId,
-        quantity: item.quantity,
-      }));
-
-      await tx.salesOrderItem.createMany({
-        data: itemsData,
-      });
+      if (!order) {
+        throw new Error('Failed to create sales order');
+      }
 
       // 2. Automatically trigger Manufacturing Orders for shortages of manufactured goods
       for (const item of parsed.items) {
@@ -183,14 +186,14 @@ export class SalesService {
           });
 
           if (bom) {
-            await tx.manufacturingOrder.create({
-              data: {
+            await this.manufacturingRepository.create(
+              {
                 productId: item.productId,
                 quantity: shortage,
-                status: ManufacturingStatus.draft,
-                companyId,
               },
-            });
+              companyId,
+              tx
+            );
           }
         }
       }
@@ -198,32 +201,14 @@ export class SalesService {
       // 3. Create requested Purchase Orders if specified in procurement payload
       if (parsed.procurement && parsed.procurement.purchaseOrders) {
         for (const po of parsed.procurement.purchaseOrders) {
-          for (const poItem of po.items) {
-            await tx.inventory.upsert({
-              where: { productId: poItem.productId },
-              create: {
-                productId: poItem.productId,
-                companyId,
-                onHandQty: 0,
-                reservedQty: 0,
-              },
-              update: {},
-            });
-          }
-
-          await tx.purchaseOrder.create({
-            data: {
+          await this.purchaseRepository.create(
+            {
               vendorName: po.vendorName,
-              status: PurchaseOrderStatus.draft,
-              companyId,
-              items: {
-                create: po.items.map((poItem) => ({
-                  productId: poItem.productId,
-                  quantity: poItem.quantity,
-                })),
-              },
+              items: po.items,
             },
-          });
+            companyId,
+            tx
+          );
         }
       }
 

@@ -11,6 +11,8 @@ export async function getPurchaseOrder(id: string): Promise<PurchaseOrder> {
 
 export async function createPurchaseOrder(data: {
   vendorName: string;
+  vendorAddress?: string;
+  responsiblePersonId?: string;
   items: { productId: string; quantity: number }[];
 }): Promise<PurchaseOrder> {
   return fetchApi('/purchase', {

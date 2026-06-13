@@ -44,69 +44,102 @@ export class ManufacturingService {
   }
 
   /**
-   * Start a manufacturing order — consume BoM components from inventory.
-   *
-   * Transaction:
-   * 1. Validate MO is draft
-   * 2. Fetch BoM for product
-   * 3. For each BoM item: check & decrement inventory, write MANUFACTURE_CONSUME ledger
-   * 4. Update MO status to in_progress
+   * Confirm a manufacturing order (draft -> confirmed)
+   */
+  async confirm(id: string, companyId: string) {
+    const mo = await this.getById(id, companyId);
+
+    if (mo.status !== ManufacturingStatus.draft) {
+      const error = new Error('Only draft manufacturing orders can be confirmed') as Error & { statusCode: number };
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const updatedMo = await this.repository.updateStatus(id, ManufacturingStatus.confirmed);
+    await this.auditService.log('ManufacturingOrder', id, 'CONFIRM', { status: 'draft' }, { status: 'confirmed' }, companyId);
+    return updatedMo;
+  }
+
+  /**
+   * Cancel a manufacturing order (draft/confirmed/in_progress -> cancelled)
+   */
+  async cancel(id: string, companyId: string) {
+    const mo = await this.getById(id, companyId);
+
+    if (mo.status === ManufacturingStatus.completed || mo.status === ManufacturingStatus.cancelled) {
+      const error = new Error('Cannot cancel a completed or already cancelled manufacturing order') as Error & { statusCode: number };
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const updatedMo = await this.repository.updateStatus(id, ManufacturingStatus.cancelled);
+    await this.auditService.log('ManufacturingOrder', id, 'CANCEL', { status: mo.status }, { status: 'cancelled' }, companyId);
+    return updatedMo;
+  }
+
+  /**
+   * Start a manufacturing order — consume components from inventory.
+   * Allows transitioning from either draft or confirmed.
    */
   async start(id: string, companyId: string) {
     const mo = await this.getById(id, companyId);
 
-    if (mo.status !== ManufacturingStatus.draft) {
-      const error = new Error('Only draft manufacturing orders can be started') as Error & { statusCode: number };
+    if (mo.status !== ManufacturingStatus.draft && mo.status !== ManufacturingStatus.confirmed) {
+      const error = new Error('Manufacturing order must be draft or confirmed to start') as Error & { statusCode: number };
       error.statusCode = 400;
       throw error;
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Fetch BoM for the product
-      const bom = await tx.boM.findFirst({
-        where: { productId: mo.productId, companyId },
+      // Fetch the MO with items
+      const moWithItems = await tx.manufacturingOrder.findUnique({
+        where: { id },
         include: {
           items: {
-            include: {
-              component: { select: { id: true, name: true } },
-            },
-          },
-        },
+            include: { product: true }
+          }
+        }
       });
 
-      if (!bom || bom.items.length === 0) {
-        throw new Error(`No Bill of Materials found for product ${mo.product.name}`);
+      if (!moWithItems) {
+        throw new Error('Manufacturing order not found');
       }
 
       const consumedComponents: ConsumedComponent[] = [];
 
-      // For each BoM item: check inventory and consume
-      for (const bomItem of bom.items) {
-        const requiredQty = bomItem.quantity * mo.quantity;
+      // For each item: check inventory and consume
+      for (const item of moWithItems.items) {
+        const requiredQty = item.toConsumeQty;
 
         // Check inventory availability
         const inventory = await tx.inventory.findUnique({
-          where: { productId: bomItem.componentId },
+          where: { productId: item.productId },
         });
 
         if (!inventory || inventory.onHandQty < requiredQty) {
           const available = inventory?.onHandQty ?? 0;
           throw new Error(
-            `Insufficient stock for component "${bomItem.component.name}": ` +
+            `Insufficient stock for component "${item.product.name}": ` +
             `need ${requiredQty}, have ${available}`
           );
         }
 
         // Decrement inventory
         await tx.inventory.update({
-          where: { productId: bomItem.componentId },
+          where: { productId: item.productId },
           data: { onHandQty: { decrement: requiredQty } },
+        });
+
+        // Update item's consumedQty
+        await tx.manufacturingOrderItem.update({
+          where: { id: item.id },
+          data: { consumedQty: requiredQty },
         });
 
         // Write stock ledger entry
         await tx.stockLedger.create({
           data: {
-            productId: bomItem.componentId,
+            productId: item.productId,
             changeQty: -requiredQty,
             type: StockMovementType.MANUFACTURE_CONSUME,
             referenceId: mo.id,
@@ -115,18 +148,24 @@ export class ManufacturingService {
         });
 
         consumedComponents.push({
-          componentId: bomItem.componentId,
-          componentName: bomItem.component.name,
+          componentId: item.productId,
+          componentName: item.product.name,
           qtyConsumed: requiredQty,
         });
       }
 
-      // Update MO status
+      // Update MO status to in_progress
       const updatedMo = await tx.manufacturingOrder.update({
         where: { id },
         data: { status: ManufacturingStatus.in_progress },
         include: {
           product: { select: { id: true, name: true } },
+          assignee: { select: { id: true, name: true, email: true } },
+          bom: { select: { id: true } },
+          items: {
+            include: { product: { select: { id: true, name: true } } },
+          },
+          workOrders: true,
         },
       });
 
@@ -136,19 +175,13 @@ export class ManufacturingService {
       };
     });
 
-    // Audit log after transaction completes (use the start result id)
-    await this.auditService.log('ManufacturingOrder', id, 'START', { status: 'draft' }, { status: 'in_progress' }, companyId);
+    // Audit log after transaction completes
+    await this.auditService.log('ManufacturingOrder', id, 'START', { status: mo.status }, { status: 'in_progress' }, companyId);
     return result;
   }
 
   /**
    * Complete a manufacturing order — produce finished goods into inventory.
-   *
-   * Transaction:
-   * 1. Validate MO is in_progress
-   * 2. Increment inventory for finished product
-   * 3. Write MANUFACTURE_PRODUCE ledger entry
-   * 4. Update MO status to completed
    */
   async complete(id: string, companyId: string) {
     const mo = await this.getById(id, companyId);
@@ -185,12 +218,18 @@ export class ManufacturingService {
         },
       });
 
-      // Update MO status
+      // Update MO status to completed
       const updatedMo = await tx.manufacturingOrder.update({
         where: { id },
         data: { status: ManufacturingStatus.completed },
         include: {
           product: { select: { id: true, name: true } },
+          assignee: { select: { id: true, name: true, email: true } },
+          bom: { select: { id: true } },
+          items: {
+            include: { product: { select: { id: true, name: true } } },
+          },
+          workOrders: true,
         },
       });
 
@@ -199,5 +238,43 @@ export class ManufacturingService {
 
     await this.auditService.log('ManufacturingOrder', id, 'COMPLETE', { status: 'in_progress' }, { status: 'completed' }, companyId);
     return result;
+  }
+
+  /**
+   * Toggle work order status and compute real duration.
+   */
+  async toggleWorkOrder(id: string, workOrderId: string, companyId: string) {
+    // Verify MO exists
+    await this.getById(id, companyId);
+
+    const workOrder = await prisma.manufacturingWorkOrder.findFirst({
+      where: { id: workOrderId, manufacturingOrderId: id, companyId },
+    });
+
+    if (!workOrder) {
+      const error = new Error('Work order not found') as Error & { statusCode: number };
+      error.statusCode = 404;
+      throw error;
+    }
+
+    let newStatus = 'in_progress';
+    let newRealDuration = workOrder.realDuration;
+
+    if (workOrder.status === 'pending') {
+      newStatus = 'in_progress';
+    } else if (workOrder.status === 'in_progress') {
+      newStatus = 'finished';
+      newRealDuration = workOrder.plannedDuration;
+    } else {
+      newStatus = 'pending';
+      newRealDuration = 0;
+    }
+
+    const updatedWo = await prisma.manufacturingWorkOrder.update({
+      where: { id: workOrderId },
+      data: { status: newStatus, realDuration: newRealDuration },
+    });
+
+    return updatedWo;
   }
 }

@@ -102,4 +102,61 @@ export class ManufacturingController {
       next(err);
     }
   };
+
+  /**
+   * POST /:id/confirm — Confirm manufacturing order.
+   */
+  confirm = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
+      if (!companyId) {
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
+      }
+      const result = await this.service.confirm(req.params.id, companyId);
+      res.json(result);
+    } catch (err: any) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      next(err);
+    }
+  };
+
+  /**
+   * POST /:id/cancel — Cancel manufacturing order.
+   */
+  cancel = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
+      if (!companyId) {
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
+      }
+      const result = await this.service.cancel(req.params.id, companyId);
+      res.json(result);
+    } catch (err: any) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      next(err);
+    }
+  };
+
+  /**
+   * POST /:id/work-orders/:workOrderId/toggle — Toggle work order status and timer.
+   */
+  toggleWorkOrder = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const companyId = (req as any).user?.companyId || (req.headers['x-company-id'] as string);
+      if (!companyId) {
+        return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
+      }
+      const result = await this.service.toggleWorkOrder(req.params.id, req.params.workOrderId, companyId);
+      res.json(result);
+    } catch (err: any) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      next(err);
+    }
+  };
 }

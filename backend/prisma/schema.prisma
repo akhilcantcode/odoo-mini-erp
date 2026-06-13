@@ -32,8 +32,10 @@ enum PurchaseOrderStatus {
 
 enum ManufacturingStatus {
   draft
+  confirmed
   in_progress
   completed
+  cancelled
 }
 
 enum StockMovementType {
@@ -82,17 +84,19 @@ model Company {
   name      String
   createdAt DateTime @default(now())
 
-  users               User[]
-  products            Product[]
-  inventories         Inventory[]
-  stockLedgers        StockLedger[]
-  salesOrders         SalesOrder[]
-  purchaseOrders      PurchaseOrder[]
-  boms                BoM[]
-  manufacturingOrders ManufacturingOrder[]
-  reservations        Reservation[]
-  roles               Role[]
-  auditLogs           AuditLog[]
+  users                   User[]
+  products                Product[]
+  inventories             Inventory[]
+  stockLedgers            StockLedger[]
+  salesOrders             SalesOrder[]
+  purchaseOrders          PurchaseOrder[]
+  boms                    BoM[]
+  manufacturingOrders     ManufacturingOrder[]
+  reservations            Reservation[]
+  roles                   Role[]
+  auditLogs               AuditLog[]
+  manufacturingOrderItems ManufacturingOrderItem[]
+  manufacturingWorkOrders ManufacturingWorkOrder[]
 }
 
 //////////////////////////////////////////////////////
@@ -111,14 +115,15 @@ model Product {
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
 
-  inventory           Inventory?
-  bom                 BoM?
-  ledgerEntries       StockLedger[]
-  salesOrderItems     SalesOrderItem[]
-  purchaseOrderItems  PurchaseOrderItem[]
-  boMItems            BoMItem[]
-  manufacturingOrders ManufacturingOrder[]
-  reservations        Reservation[]
+  inventory               Inventory?
+  bom                     BoM?
+  ledgerEntries           StockLedger[]
+  salesOrderItems         SalesOrderItem[]
+  purchaseOrderItems      PurchaseOrderItem[]
+  boMItems                BoMItem[]
+  manufacturingOrders     ManufacturingOrder[]
+  reservations            Reservation[]
+  manufacturingOrderItems ManufacturingOrderItem[]
 }
 
 model Inventory {
@@ -178,15 +183,19 @@ model SalesOrderItem {
 }
 
 model PurchaseOrder {
-  id         String              @id @default(uuid())
-  vendorName String
-  status     PurchaseOrderStatus
-  createdAt  DateTime            @default(now())
+  id                  String              @id @default(uuid())
+  vendorName          String
+  vendorAddress       String?
+  status              PurchaseOrderStatus
+  createdAt           DateTime            @default(now())
 
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  responsiblePersonId String?
+  responsiblePerson   User?               @relation("PurchaseOrderResponsible", fields: [responsiblePersonId], references: [id])
 
-  items PurchaseOrderItem[]
+  companyId           String
+  company             Company             @relation(fields: [companyId], references: [id])
+
+  items               PurchaseOrderItem[]
 }
 
 model PurchaseOrderItem {
@@ -208,7 +217,8 @@ model BoM {
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
 
-  items BoMItem[]
+  items               BoMItem[]
+  manufacturingOrders ManufacturingOrder[]
 }
 
 model BoMItem {
@@ -230,6 +240,45 @@ model ManufacturingOrder {
   quantity  Float
   status    ManufacturingStatus
   createdAt DateTime            @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  scheduleDate DateTime?
+  assigneeId   String?
+  assignee     User?     @relation("MOAssignee", fields: [assigneeId], references: [id])
+  bomId        String?
+  bom          BoM?      @relation(fields: [bomId], references: [id])
+
+  items      ManufacturingOrderItem[]
+  workOrders ManufacturingWorkOrder[]
+}
+
+model ManufacturingOrderItem {
+  id                   String             @id @default(uuid())
+  manufacturingOrderId String
+  manufacturingOrder   ManufacturingOrder @relation(fields: [manufacturingOrderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  toConsumeQty Float
+  consumedQty  Float @default(0)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+}
+
+model ManufacturingWorkOrder {
+  id                   String             @id @default(uuid())
+  manufacturingOrderId String
+  manufacturingOrder   ManufacturingOrder @relation(fields: [manufacturingOrderId], references: [id], onDelete: Cascade)
+
+  operationName  String
+  workCenterName String
+  plannedDuration Float
+  realDuration    Float  @default(0)
+  status          String @default("pending")
 
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
@@ -261,8 +310,10 @@ model User {
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
 
-  roles                  UserRole[]
-  responsibleSalesOrders SalesOrder[] @relation("SalesOrderResponsible")
+  roles                     UserRole[]
+  responsibleSalesOrders    SalesOrder[]    @relation("SalesOrderResponsible")
+  responsiblePurchaseOrders PurchaseOrder[] @relation("PurchaseOrderResponsible")
+  assignedManufacturingOrders ManufacturingOrder[] @relation("MOAssignee")
 }
 
 model Role {

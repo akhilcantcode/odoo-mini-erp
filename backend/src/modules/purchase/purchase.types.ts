@@ -9,6 +9,8 @@ export const CreatePurchaseOrderItemSchema = z.object({
 
 export const CreatePurchaseOrderSchema = z.object({
   vendorName: z.string().min(1, 'Vendor name is required'),
+  vendorAddress: z.string().optional().nullable(),
+  responsiblePersonId: z.string().uuid('Invalid responsible person ID').optional().nullable(),
   items: z
     .array(CreatePurchaseOrderItemSchema)
     .min(1, 'At least one item is required'),

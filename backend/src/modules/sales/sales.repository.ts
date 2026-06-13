@@ -1,13 +1,13 @@
 import { prisma } from '../../config/prisma';
 import { CreateSalesOrderInput } from './sales.types';
-import { SalesOrderStatus, ReservationSourceType, StockMovementType } from '@prisma/client';
+import { Prisma, SalesOrderStatus, ReservationSourceType, StockMovementType } from '@prisma/client';
 
 export class SalesRepository {
   /**
    * Create a Sales Order in draft status with its items in a transaction.
    */
-  async create(data: CreateSalesOrderInput, companyId: string) {
-    return prisma.$transaction(async (tx) => {
+  async create(data: CreateSalesOrderInput, companyId: string, txContext?: Prisma.TransactionClient) {
+    const execute = async (tx: Prisma.TransactionClient) => {
       // Get next SO sequence ID
       const lastOrder = await tx.salesOrder.findFirst({
         where: { id: { startsWith: 'SO-' } },
@@ -63,7 +63,9 @@ export class SalesRepository {
           },
         },
       });
-    });
+    };
+
+    return txContext ? execute(txContext) : prisma.$transaction(execute);
   }
 
   /**

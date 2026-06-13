@@ -14,6 +14,13 @@ export interface PurchaseOrderItem {
 export interface PurchaseOrder extends BaseEntity {
   poNumber: string;
   vendorName: string;
+  vendorAddress?: string;
+  responsiblePersonId?: string;
+  responsiblePerson?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
   status: 'draft' | 'confirmed' | 'received';
   companyId: string;
   items: PurchaseOrderItem[];

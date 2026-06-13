@@ -1,6 +1,6 @@
 import { prisma } from '../../config/prisma';
 import { CreatePurchaseOrderInput } from './purchase.types';
-import { PurchaseOrderStatus, StockMovementType } from '@prisma/client';
+import { Prisma, PurchaseOrderStatus, StockMovementType } from '@prisma/client';
 
 export class PurchaseRepository {
   /**
@@ -10,8 +10,11 @@ export class PurchaseRepository {
     return prisma.purchaseOrder.findMany({
       where: { companyId },
       include: {
+        responsiblePerson: {
+          select: { id: true, name: true, email: true },
+        },
         items: {
-          include: { product: { select: { id: true, name: true } } },
+          include: { product: { select: { id: true, name: true, costPrice: true } } },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -25,8 +28,11 @@ export class PurchaseRepository {
     return prisma.purchaseOrder.findFirst({
       where: { id, companyId },
       include: {
+        responsiblePerson: {
+          select: { id: true, name: true, email: true },
+        },
         items: {
-          include: { product: { select: { id: true, name: true } } },
+          include: { product: { select: { id: true, name: true, costPrice: true } } },
         },
       },
     });
@@ -36,8 +42,8 @@ export class PurchaseRepository {
    * Create a purchase order with nested items in draft status.
    * Also ensures Inventory rows exist for each product.
    */
-  async create(data: CreatePurchaseOrderInput, companyId: string) {
-    return prisma.$transaction(async (tx) => {
+  async create(data: CreatePurchaseOrderInput, companyId: string, txContext?: Prisma.TransactionClient) {
+    const execute = async (tx: Prisma.TransactionClient) => {
       // Ensure Inventory rows exist for every product in the PO
       for (const item of data.items) {
         await tx.inventory.upsert({
@@ -73,6 +79,8 @@ export class PurchaseRepository {
         data: {
           id: nextId,
           vendorName: data.vendorName,
+          vendorAddress: data.vendorAddress,
+          responsiblePersonId: data.responsiblePersonId,
           status: PurchaseOrderStatus.draft,
           companyId,
           items: {
@@ -83,12 +91,17 @@ export class PurchaseRepository {
           },
         },
         include: {
+          responsiblePerson: {
+            select: { id: true, name: true, email: true },
+          },
           items: {
-            include: { product: { select: { id: true, name: true } } },
+            include: { product: { select: { id: true, name: true, costPrice: true } } },
           },
         },
       });
-    });
+    };
+
+    return txContext ? execute(txContext) : prisma.$transaction(execute);
   }
 
   /**
@@ -152,7 +165,7 @@ export class PurchaseRepository {
         data: { status: PurchaseOrderStatus.received },
         include: {
           items: {
-            include: { product: { select: { id: true, name: true } } },
+            include: { product: { select: { id: true, name: true, costPrice: true } } },
           },
         },
       });
