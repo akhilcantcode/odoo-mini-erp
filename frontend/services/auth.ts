@@ -40,3 +40,69 @@ export async function registerUser(data: {
     body: JSON.stringify(data),
   });
 }
+
+export interface ManagedUser {
+  id: string;
+  name: string;
+  email: string;
+  roles: string[];
+}
+
+export interface ManagedRole {
+  role: string;
+  permissions: {
+    module: string;
+    action: string;
+  }[];
+}
+
+export async function getUsers(): Promise<ManagedUser[]> {
+  return fetchApi('/auth/users');
+}
+
+export async function addUser(data: {
+  name: string;
+  email: string;
+  password: string;
+  roles: string[];
+}): Promise<ManagedUser> {
+  return fetchApi('/auth/users', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateUser(
+  id: string,
+  data: {
+    name?: string;
+    email?: string;
+    roles?: string[];
+  }
+): Promise<ManagedUser> {
+  return fetchApi(`/auth/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteUser(id: string): Promise<{ message: string }> {
+  return fetchApi(`/auth/users/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getRoles(): Promise<ManagedRole[]> {
+  return fetchApi('/auth/roles');
+}
+
+export async function updateRolePermissions(
+  roleName: string,
+  permissions: { module: string; action: string }[]
+): Promise<ManagedRole> {
+  return fetchApi(`/auth/roles/${roleName}/permissions`, {
+    method: 'PUT',
+    body: JSON.stringify({ permissions }),
+  });
+}
+

@@ -1,8 +1,18 @@
-export interface SalesOrder {
-  id: string;
-  orderNumber: string;
-  customerId: string;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { z } from 'zod';
+
+// --- Zod Schemas ---
+
+export const CreateSalesOrderItemSchema = z.object({
+  productId: z.string().uuid('Invalid product ID'),
+  quantity: z.number().positive('Quantity must be positive'),
+});
+
+export const CreateSalesOrderSchema = z.object({
+  customerName: z.string().min(1, 'Customer name is required'),
+  items: z.array(CreateSalesOrderItemSchema).min(1, 'At least one item is required'),
+});
+
+// --- Inferred Types ---
+
+export type CreateSalesOrderInput = z.infer<typeof CreateSalesOrderSchema>;
+export type CreateSalesOrderItemInput = z.infer<typeof CreateSalesOrderItemSchema>;

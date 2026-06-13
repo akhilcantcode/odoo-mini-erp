@@ -2,7 +2,18 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { loginUser, registerUser } from '../services/auth';
+import {
+  loginUser,
+  registerUser,
+  getUsers,
+  addUser,
+  updateUser,
+  deleteUser,
+  getRoles,
+  updateRolePermissions,
+  ManagedUser,
+  ManagedRole
+} from '../services/auth';
 import { getProducts, createProduct, getBom, setBom } from '../features/product/services';
 import { getInventory, adjustInventory, getStockLedger } from '../features/inventory/services';
 import { getPurchaseOrders, createPurchaseOrder, confirmPurchaseOrder, receivePurchaseOrder } from '../features/purchase/services';
@@ -10,6 +21,7 @@ import { getManufacturingOrders, createManufacturingOrder, startManufacturingOrd
 import { runProcurement } from '../features/procurement/services';
 import { getAuditLogs } from '../features/audit/services';
 import { getDashboardStats } from '../features/dashboard/services';
+import { getSalesOrders, createSalesOrder } from '../features/sales/services';
 import type { Product, BoMItem } from '../features/product/types';
 import type { InventoryItem, StockLedgerEntry } from '../features/inventory/types';
 import type { PurchaseOrder } from '../features/purchase/types';
@@ -17,23 +29,26 @@ import type { ManufacturingOrder } from '../features/manufacturing/types';
 import type { AuditLog } from '../features/audit/types';
 import type { ProcurementResult } from '../features/procurement/services';
 import type { DashboardStats } from '../features/dashboard/types';
+import type { SalesOrder } from '../features/sales/types';
 import {
   LayoutDashboard, Package, Warehouse, ShoppingCart, Factory, Zap, ScrollText,
   LogOut, Plus, ChevronRight, RefreshCw, Check, Truck, Play, CheckCircle2,
   TrendingUp, DollarSign, Activity, AlertCircle, Search, X, Settings2, User,
-  ArrowUpDown
+  ArrowUpDown, ShoppingBag, Users
 } from 'lucide-react';
 
 // ─── Tabs ───
-type TabKey = 'dashboard' | 'products' | 'inventory' | 'purchases' | 'manufacturing' | 'procurement' | 'audit';
+type TabKey = 'dashboard' | 'products' | 'inventory' | 'purchases' | 'sales' | 'manufacturing' | 'procurement' | 'users' | 'audit';
 
-const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+const TABS: { key: TabKey; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
   { key: 'products', label: 'Products & BoM', icon: <Package size={18} /> },
   { key: 'inventory', label: 'Inventory', icon: <Warehouse size={18} /> },
   { key: 'purchases', label: 'Purchases', icon: <ShoppingCart size={18} /> },
+  { key: 'sales', label: 'Sales Orders', icon: <ShoppingBag size={18} /> },
   { key: 'manufacturing', label: 'Manufacturing', icon: <Factory size={18} /> },
   { key: 'procurement', label: 'Procurement', icon: <Zap size={18} /> },
+  { key: 'users', label: 'Users & Permissions', icon: <Users size={18} />, adminOnly: true },
   { key: 'audit', label: 'Audit Trail', icon: <ScrollText size={18} /> },
 ];
 
@@ -79,12 +94,13 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
   );
 }
 
-function Btn({ children, onClick, variant = 'primary', size = 'md', disabled = false, className = '' }: {
+function Btn({ children, onClick, variant = 'primary', size = 'md', disabled = false, type, className = '' }: {
   children: React.ReactNode;
   onClick?: () => void;
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md';
   disabled?: boolean;
+  type?: 'button' | 'submit' | 'reset';
   className?: string;
 }) {
   const base = 'inline-flex items-center justify-center gap-1.5 font-medium rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer';
@@ -96,7 +112,7 @@ function Btn({ children, onClick, variant = 'primary', size = 'md', disabled = f
     ghost: 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:ring-gray-300',
   };
   return (
-    <button onClick={onClick} disabled={disabled} className={`${base} ${sizeMap[size]} ${variantMap[variant]} ${className}`}>
+    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${sizeMap[size]} ${variantMap[variant]} ${className}`}>
       {children}
     </button>
   );
@@ -1020,6 +1036,503 @@ function AuditTab() {
   );
 }
 
+// ─── Sales Tab ───
+function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void }) {
+  const [orders, setOrders] = useState<SalesOrder[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [customer, setCustomer] = useState('');
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [draftItems, setDraftItems] = useState<{ productId: string; name: string; quantity: number }[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [o, p] = await Promise.all([getSalesOrders(), getProducts()]);
+      setOrders(o);
+      setProducts(p);
+    } catch { /* swallow */ }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const handleAddDraftItem = () => {
+    if (!selectedProductId || !quantity) return;
+    const prod = products.find(p => p.id === selectedProductId);
+    if (!prod) return;
+
+    setDraftItems(prev => [
+      ...prev,
+      { productId: selectedProductId, name: prod.name, quantity: parseFloat(quantity) }
+    ]);
+    setSelectedProductId('');
+    setQuantity('');
+  };
+
+  const handleRemoveDraftItem = (index: number) => {
+    setDraftItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (draftItems.length === 0) {
+      toast('Please add at least one item to the sales order', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      await createSalesOrder({
+        customerName: customer,
+        items: draftItems.map(item => ({ productId: item.productId, quantity: item.quantity }))
+      });
+      toast('Sales Order created successfully', 'success');
+      setShowForm(false);
+      setCustomer('');
+      setDraftItems([]);
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to create sales order', 'error');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900">Sales Orders</h2>
+        <div className="flex gap-2">
+          <Btn variant="ghost" size="sm" onClick={refresh}><RefreshCw size={14} /></Btn>
+          <Btn size="sm" onClick={() => setShowForm(!showForm)}><Plus size={14} /> New Sales Order</Btn>
+        </div>
+      </div>
+
+      {/* Create Form */}
+      {showForm && (
+        <Card className="p-5 animate-fade-in space-y-4">
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Customer Name"
+                placeholder="e.g. Grand Furniture Mart"
+                value={customer}
+                onChange={e => setCustomer(e.target.value)}
+                required
+              />
+            </div>
+
+            {/* Add Item Panel */}
+            <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
+              <p className="text-xs font-semibold text-gray-500">Order Items</p>
+              
+              <div className="flex gap-3 items-end flex-wrap">
+                <div className="flex-1 min-w-[200px]">
+                  <Select
+                    label="Product"
+                    value={selectedProductId}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedProductId(e.target.value)}
+                  >
+                    <option value="">Select product…</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Price: ${p.salesPrice ?? 'N/A'})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="w-28">
+                  <Input
+                    label="Quantity"
+                    type="number"
+                    min="1"
+                    placeholder="1"
+                    value={quantity}
+                    onChange={e => setQuantity(e.target.value)}
+                  />
+                </div>
+                <Btn type="button" variant="secondary" onClick={handleAddDraftItem}>
+                  <Plus size={14} /> Add
+                </Btn>
+              </div>
+
+              {/* Draft Items List */}
+              {draftItems.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {draftItems.map((item, index) => (
+                    <div key={index} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-gray-100 text-sm">
+                      <span className="font-medium text-gray-800">{item.name}</span>
+                      <div className="flex items-center gap-4">
+                        <span className="text-gray-500">Qty: {item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDraftItem(index)}
+                          className="text-red-500 hover:text-red-700 transition cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Btn type="button" variant="secondary" onClick={() => { setShowForm(false); setDraftItems([]); }}>Cancel</Btn>
+              <Btn type="submit" disabled={saving || draftItems.length === 0}>
+                {saving ? <RefreshCw size={14} className="animate-spin-slow" /> : <Check size={14} />} Create Draft Order
+              </Btn>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {/* Orders List */}
+      {loading ? (
+        <div className="flex justify-center py-16"><RefreshCw size={20} className="animate-spin-slow text-sky-500" /></div>
+      ) : orders.length === 0 ? (
+        <Card><EmptyState icon={<ShoppingCart size={20} />} title="No sales orders" description="Create a sales order to get started." /></Card>
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
+                  <th className="px-5 py-3">Order ID</th>
+                  <th className="px-5 py-3">Customer</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Items</th>
+                  <th className="px-5 py-3">Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {orders.map(o => (
+                  <tr key={o.id} className="hover:bg-sky-50/30 transition">
+                    <td className="px-5 py-3 font-mono text-xs text-gray-400">{o.id.slice(0, 8)}…</td>
+                    <td className="px-5 py-3 font-medium text-gray-800">{o.customerName}</td>
+                    <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
+                    <td className="px-5 py-3 text-gray-600">
+                      <div className="flex flex-col gap-0.5">
+                        {o.items?.map((item, idx) => (
+                          <span key={item.id || idx} className="text-xs text-gray-500">
+                            • {item.product?.name || 'Unknown Product'} (×{item.quantity})
+                          </span>
+                        )) || 'No items'}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-gray-400 text-xs">{new Date(o.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Users & Permissions Tab ───
+function UsersTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void }) {
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'roles'>('users');
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [roles, setRoles] = useState<ManagedRole[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // User Form State
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [uName, setUName] = useState('');
+  const [uEmail, setUEmail] = useState('');
+  const [uPassword, setUPassword] = useState('');
+  const [uRoles, setURoles] = useState<string[]>([]);
+  const [savingUser, setSavingUser] = useState(false);
+
+  // Edit User State
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+
+  // Role Mappings State
+  const [selectedRoleName, setSelectedRoleName] = useState<string>('SALES');
+  const [savingRole, setSavingRole] = useState(false);
+
+  // List of all possible modules and actions
+  const ALL_MODULES = ['PRODUCT', 'SALES', 'PURCHASE', 'MANUFACTURING', 'INVENTORY', 'AUDIT'];
+  const ALL_ACTIONS = ['READ', 'CREATE', 'UPDATE', 'DELETE'];
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [u, r] = await Promise.all([getUsers(), getRoles()]);
+      setUsers(u);
+      setRoles(r);
+    } catch { /* swallow */ }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (uRoles.length === 0) {
+      toast('Please assign at least one role to the user', 'error');
+      return;
+    }
+    setSavingUser(true);
+    try {
+      if (editingUserId) {
+        await updateUser(editingUserId, { name: uName, email: uEmail, roles: uRoles });
+        toast('User updated successfully', 'success');
+      } else {
+        await addUser({ name: uName, email: uEmail, password: uPassword, roles: uRoles });
+        toast('User created successfully', 'success');
+      }
+      setShowUserForm(false);
+      setEditingUserId(null);
+      setUName(''); setUEmail(''); setUPassword(''); setURoles([]);
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to save user', 'error');
+    }
+    setSavingUser(false);
+  };
+
+  const handleEditClick = (user: ManagedUser) => {
+    setEditingUserId(user.id);
+    setUName(user.name);
+    setUEmail(user.email);
+    setUPassword(''); // leave empty
+    setURoles(user.roles);
+    setShowUserForm(true);
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+    try {
+      await deleteUser(id);
+      toast('User deleted successfully', 'success');
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to delete user', 'error');
+    }
+  };
+
+  const toggleRoleCheckbox = (role: string) => {
+    setURoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
+  };
+
+  // Roles & Permissions state
+  const selectedRole = roles.find(r => r.role === selectedRoleName);
+  const isPermissionChecked = (module: string, action: string) => {
+    if (!selectedRole) return false;
+    return selectedRole.permissions.some(p => p.module === module && p.action === action);
+  };
+
+  const handleTogglePermission = async (module: string, action: string) => {
+    if (!selectedRole) return;
+    const isChecked = isPermissionChecked(module, action);
+    let newPerms = [...selectedRole.permissions];
+    if (isChecked) {
+      newPerms = newPerms.filter(p => !(p.module === module && p.action === action));
+    } else {
+      newPerms.push({ module, action });
+    }
+
+    // Update locally first for fast response
+    setRoles(prev => prev.map(r => r.role === selectedRoleName ? { ...r, permissions: newPerms } : r));
+  };
+
+  const handleSavePermissions = async () => {
+    if (!selectedRole) return;
+    setSavingRole(true);
+    try {
+      await updateRolePermissions(selectedRoleName, selectedRole.permissions);
+      toast('Permissions updated successfully', 'success');
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to update permissions', 'error');
+    }
+    setSavingRole(false);
+  };
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900">Users & Permissions</h2>
+        <Btn variant="ghost" size="sm" onClick={refresh}><RefreshCw size={14} /></Btn>
+      </div>
+
+      {/* Sub-tabs toggle */}
+      <div className="flex border-b border-gray-100 mb-4">
+        <button
+          onClick={() => setActiveSubTab('users')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition cursor-pointer ${activeSubTab === 'users' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          Users List
+        </button>
+        <button
+          onClick={() => setActiveSubTab('roles')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition cursor-pointer ${activeSubTab === 'roles' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          Role Permissions
+        </button>
+      </div>
+
+      {activeSubTab === 'users' ? (
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <Btn size="sm" onClick={() => {
+              setEditingUserId(null);
+              setUName(''); setUEmail(''); setUPassword(''); setURoles([]);
+              setShowUserForm(!showUserForm);
+            }}>
+              <Plus size={14} /> Add User
+            </Btn>
+          </div>
+
+          {showUserForm && (
+            <Card className="p-5 animate-fade-in">
+              <form onSubmit={handleAddUser} className="space-y-4">
+                <h3 className="text-sm font-semibold text-gray-800">{editingUserId ? 'Edit User' : 'Create User'}</h3>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Input label="Name" value={uName} onChange={e => setUName(e.target.value)} required />
+                  <Input label="Email" type="email" value={uEmail} onChange={e => setUEmail(e.target.value)} required />
+                  {!editingUserId && <Input label="Password" type="password" value={uPassword} onChange={e => setUPassword(e.target.value)} required />}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-500">Assign Roles</label>
+                  <div className="flex gap-4 flex-wrap">
+                    {['OWNER', 'ADMIN', 'SALES', 'PURCHASE', 'MANUFACTURING', 'INVENTORY'].map(r => (
+                      <label key={r} className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={uRoles.includes(r)}
+                          onChange={() => toggleRoleCheckbox(r)}
+                          className="rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+                        />
+                        {r}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <Btn type="button" variant="secondary" onClick={() => setShowUserForm(false)}>Cancel</Btn>
+                  <Btn type="submit" disabled={savingUser}>
+                    {savingUser ? <RefreshCw size={14} className="animate-spin-slow" /> : <Check size={14} />} Save User
+                  </Btn>
+                </div>
+              </form>
+            </Card>
+          )}
+
+          {loading ? (
+            <div className="flex justify-center py-16"><RefreshCw size={20} className="animate-spin-slow text-sky-500" /></div>
+          ) : (
+            <Card>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
+                      <th className="px-5 py-3">Name</th>
+                      <th className="px-5 py-3">Email</th>
+                      <th className="px-5 py-3">Roles</th>
+                      <th className="px-5 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {users.map(u => (
+                      <tr key={u.id} className="hover:bg-sky-50/30 transition">
+                        <td className="px-5 py-3 font-medium text-gray-800">{u.name}</td>
+                        <td className="px-5 py-3 text-gray-600">{u.email}</td>
+                        <td className="px-5 py-3">
+                          <div className="flex gap-1 flex-wrap">
+                            {u.roles.map(r => (
+                              <span key={r} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-50 text-sky-700">
+                                {r}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="inline-flex gap-2">
+                            <Btn variant="ghost" size="sm" onClick={() => handleEditClick(u)}>Edit</Btn>
+                            <Btn variant="danger" size="sm" onClick={() => handleDeleteUser(u.id)}>Delete</Btn>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </div>
+      ) : (
+        /* Roles and Permissions Tab */
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="w-64">
+              <Select
+                label="Role to Configure"
+                value={selectedRoleName}
+                onChange={e => setSelectedRoleName(e.target.value)}
+              >
+                {['OWNER', 'ADMIN', 'SALES', 'PURCHASE', 'MANUFACTURING', 'INVENTORY'].map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </Select>
+            </div>
+            <Btn size="sm" className="mt-5" onClick={handleSavePermissions} disabled={savingRole}>
+              {savingRole ? <RefreshCw size={14} className="animate-spin-slow" /> : <Check size={14} />} Save Role Permissions
+            </Btn>
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-16"><RefreshCw size={20} className="animate-spin-slow text-sky-500" /></div>
+          ) : (
+            <Card className="p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                {ALL_MODULES.map(module => (
+                  <div key={module} className="border border-gray-100 rounded-xl p-4 bg-gray-50/30 space-y-2">
+                    <p className="text-sm font-semibold text-gray-800 border-b border-gray-100 pb-1.5">{module}</p>
+                    <div className="flex flex-col gap-1.5 pt-1">
+                      {ALL_ACTIONS.map(action => {
+                        const checked = isPermissionChecked(module, action);
+                        const disabled = selectedRoleName === 'OWNER' || selectedRoleName === 'ADMIN';
+                        return (
+                          <label key={action} className={`flex items-center gap-2 text-xs font-medium cursor-pointer ${disabled ? 'text-gray-400 cursor-not-allowed' : 'text-gray-600'}`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={disabled}
+                              onChange={() => handleTogglePermission(module, action)}
+                              className="rounded border-gray-300 text-sky-600 focus:ring-sky-500 disabled:opacity-50"
+                            />
+                            {action}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {(selectedRoleName === 'OWNER' || selectedRoleName === 'ADMIN') && (
+                <p className="text-xs text-amber-600 font-medium mt-4 bg-amber-50 border border-amber-100 rounded-lg p-2.5">
+                  Note: OWNER and ADMIN roles are pre-configured with full permissions across all modules and cannot be edited.
+                </p>
+              )}
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ───
 export default function Home() {
   const { user, token, logout } = useAuthStore();
@@ -1057,8 +1570,10 @@ export default function Home() {
       case 'products': return <ProductsTab toast={showToast} />;
       case 'inventory': return <InventoryTab toast={showToast} />;
       case 'purchases': return <PurchasesTab toast={showToast} />;
+      case 'sales': return <SalesTab toast={showToast} />;
       case 'manufacturing': return <ManufacturingTab toast={showToast} />;
       case 'procurement': return <ProcurementTab toast={showToast} />;
+      case 'users': return <UsersTab toast={showToast} />;
       case 'audit': return <AuditTab />;
     }
   };
@@ -1082,7 +1597,7 @@ export default function Home() {
 
         {/* Nav Links */}
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-          {TABS.map(tab => (
+          {TABS.filter(tab => !tab.adminOnly || user?.roles?.some(r => r === 'OWNER' || r === 'ADMIN')).map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
