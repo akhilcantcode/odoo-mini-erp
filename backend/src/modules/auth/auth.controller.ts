@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthService } from './auth.service';
 import { AuthenticatedRequest } from './auth.types';
 import { RoleType } from '@prisma/client';
+import { invalidateUserCache } from './auth.middleware';
 
 export class AuthController {
   private service: AuthService;
@@ -142,6 +143,7 @@ export class AuthController {
         email,
         roles as RoleType[]
       );
+      invalidateUserCache(id); // evict stale cached profile immediately
       return res.status(200).json(result);
     } catch (error: any) {
       return res.status(400).json({ message: error.message || 'Failed to update user' });
@@ -161,6 +163,7 @@ export class AuthController {
       }
 
       const result = await this.service.deleteUser(req.user.companyId, id);
+      invalidateUserCache(id); // evict deleted user from cache
       return res.status(200).json(result);
     } catch (error: any) {
       return res.status(400).json({ message: error.message || 'Failed to delete user' });

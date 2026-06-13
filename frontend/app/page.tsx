@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTokenRefresh } from '../hooks/useTokenRefresh';
 import { useAuthStore } from '../store/authStore';
 import {
   loginUser,
@@ -188,7 +189,7 @@ function AuthScreen({ onLogin }: { onLogin: () => void }) {
     try {
       if (isLogin) {
         const res = await loginUser(email, password);
-        setAuth(res.user, res.accessToken);
+        setAuth(res.user, res.accessToken, res.refreshToken);
         onLogin();
       } else {
         await registerUser({ name, email, password, companyName });
@@ -1668,6 +1669,9 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
   const [toastData, setToastData] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [hydrated, setHydrated] = useState(false);
+
+  // Proactively refresh the access token 5 min before it expires
+  useTokenRefresh();
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setHydrated(true); }, []);
