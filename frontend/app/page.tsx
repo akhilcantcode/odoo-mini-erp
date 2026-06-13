@@ -441,8 +441,8 @@ function BomTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void 
 
       {loading ? (
         <div className="flex justify-center py-16"><RefreshCw size={20} className="animate-spin-slow text-sky-500" /></div>
-      ) : products.length === 0 ? (
-        <Card><EmptyState icon={<Settings2 size={20} />} title="No products found" description="Create products first to configure their Bill of Materials." /></Card>
+      ) : products.filter(p => p.procurementType === 'manufacture').length === 0 ? (
+        <Card><EmptyState icon={<Settings2 size={20} />} title="No manufactured products" description="Only products with the 'Manufacture' strategy can have a Bill of Materials." /></Card>
       ) : (
         <Card>
           <div className="overflow-x-auto">
@@ -456,7 +456,7 @@ function BomTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void 
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {products.map((p) => (
+                {products.filter(p => p.procurementType === 'manufacture').map((p) => (
                   <tr key={p.id} className="hover:bg-sky-50/30 transition">
                     <td className="px-5 py-3 font-medium text-gray-800">{p.name}</td>
                     <td className="px-5 py-3">

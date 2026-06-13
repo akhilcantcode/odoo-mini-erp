@@ -51,7 +51,12 @@ export class ProductService {
    */
   async getBom(productId: string, companyId: string) {
     // Ensure product exists
-    await this.getById(productId, companyId);
+    const product = await this.getById(productId, companyId);
+    if (product.procurementType !== 'manufacture') {
+      const error = new Error('Only manufactured products can have a Bill of Materials') as Error & { statusCode: number };
+      error.statusCode = 400;
+      throw error;
+    }
     const bom = await this.repository.getBom(productId, companyId);
     if (!bom) {
       return { productId, items: [] };
@@ -64,7 +69,12 @@ export class ProductService {
    */
   async setBom(productId: string, data: unknown, companyId: string) {
     // Ensure product exists
-    await this.getById(productId, companyId);
+    const product = await this.getById(productId, companyId);
+    if (product.procurementType !== 'manufacture') {
+      const error = new Error('Only manufactured products can have a Bill of Materials') as Error & { statusCode: number };
+      error.statusCode = 400;
+      throw error;
+    }
     const parsed = SetBomSchema.parse(data);
     return this.repository.setBom(productId, parsed.items, companyId);
   }
