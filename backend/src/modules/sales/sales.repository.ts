@@ -29,6 +29,8 @@ export class SalesRepository {
         data: {
           id: nextId,
           customerName: data.customerName,
+          customerAddress: data.customerAddress,
+          responsiblePersonId: data.responsiblePersonId,
           status: SalesOrderStatus.draft,
           companyId,
         },
@@ -47,6 +49,13 @@ export class SalesRepository {
       return tx.salesOrder.findUnique({
         where: { id: order.id },
         include: {
+          responsiblePerson: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
           items: {
             include: {
               product: true,
@@ -64,6 +73,13 @@ export class SalesRepository {
     return prisma.salesOrder.findMany({
       where: { companyId },
       include: {
+        responsiblePerson: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         items: {
           include: {
             product: true,
@@ -81,6 +97,13 @@ export class SalesRepository {
     return prisma.salesOrder.findFirst({
       where: { id, companyId },
       include: {
+        responsiblePerson: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         items: {
           include: {
             product: true,

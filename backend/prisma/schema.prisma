@@ -151,15 +151,19 @@ model StockLedger {
 }
 
 model SalesOrder {
-  id           String           @id @default(uuid())
-  customerName String
-  status       SalesOrderStatus
-  createdAt    DateTime         @default(now())
+  id                  String           @id @default(uuid())
+  customerName        String
+  customerAddress     String?
+  status              SalesOrderStatus
+  createdAt           DateTime         @default(now())
 
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  responsiblePersonId String?
+  responsiblePerson   User?            @relation("SalesOrderResponsible", fields: [responsiblePersonId], references: [id])
 
-  items SalesOrderItem[]
+  companyId           String
+  company             Company          @relation(fields: [companyId], references: [id])
+
+  items               SalesOrderItem[]
 }
 
 model SalesOrderItem {
@@ -257,7 +261,8 @@ model User {
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
 
-  roles UserRole[]
+  roles                  UserRole[]
+  responsibleSalesOrders SalesOrder[] @relation("SalesOrderResponsible")
 }
 
 model Role {

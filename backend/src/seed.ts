@@ -180,6 +180,11 @@ async function seedCompanyData(companyId: string, companyName: string) {
     }
   ];
 
+  const defaultUser = await prisma.user.findFirst({
+    where: { companyId }
+  });
+  const responsiblePersonId = defaultUser ? defaultUser.id : undefined;
+
   for (const o of ordersSetup) {
     // Check if order already exists for customer
     const existingOrder = await prisma.salesOrder.findFirst({
@@ -191,6 +196,8 @@ async function seedCompanyData(companyId: string, companyName: string) {
         data: {
           id: `SO-${String(salesOrderCounter++).padStart(5, '0')}`,
           customerName: o.customerName,
+          customerAddress: '123 Business Rd, Suite 100',
+          responsiblePersonId,
           status: o.status,
           companyId
         }

@@ -1183,9 +1183,15 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [usersList, setUsersList] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  
+  // Form fields
   const [customer, setCustomer] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [responsiblePersonId, setResponsiblePersonId] = useState('');
+  
   const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [draftItems, setDraftItems] = useState<{ productId: string; name: string; quantity: number }[]>([]);
@@ -1201,6 +1207,12 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
     orderQty: string;
   }[] | null>(null);
 
+  // Detail view state
+  const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
+  const [showLogs, setShowLogs] = useState(false);
+  const [orderLogs, setOrderLogs] = useState<AuditLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
   const { user } = useAuthStore();
   const canConfirm = user?.roles?.some(r => r === 'SALES' || r === 'OWNER' || r === 'ADMIN');
   const canDeliver = user?.roles?.some(r => r === 'INVENTORY' || r === 'OWNER' || r === 'ADMIN');
@@ -1208,12 +1220,22 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
   const handleAction = async (id: string, action: 'confirm' | 'deliver') => {
     setActing(id);
     try {
+      let updated: SalesOrder;
       if (action === 'confirm') {
-        await confirmSalesOrder(id);
+        updated = await confirmSalesOrder(id);
         toast('Sales Order confirmed', 'success');
-      } else if (action === 'deliver') {
-        await deliverSalesOrder(id);
-        toast('Sales Order delivered', 'success');
+      } else {
+        updated = await deliverSalesOrder(id);
+        toast('Sales Order delivered (received)', 'success');
+      }
+      
+      // Update selectedOrder if it matches
+      if (selectedOrder && selectedOrder.id === id) {
+        setSelectedOrder(updated);
+        // Refresh logs if showing
+        if (showLogs) {
+          await fetchOrderLogs(id);
+        }
       }
       refresh();
     } catch (err: unknown) {
@@ -1225,10 +1247,16 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [o, p, pos] = await Promise.all([getSalesOrders(), getProducts(), getPurchaseOrders()]);
+      const [o, p, pos, u] = await Promise.all([
+        getSalesOrders(),
+        getProducts(),
+        getPurchaseOrders(),
+        getUsers()
+      ]);
       setOrders(o);
       setProducts(p);
       setPurchaseOrders(pos);
+      setUsersList(u);
     } catch { /* swallow */ }
     setLoading(false);
   }, []);
@@ -1269,6 +1297,8 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
       if (checkResult.available) {
         await createSalesOrder({
           customerName: customer,
+          customerAddress: customerAddress || undefined,
+          responsiblePersonId: responsiblePersonId || undefined,
           items: itemsPayload
         });
         toast('Order placed successfully', 'success');
@@ -1332,6 +1362,8 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
 
       await createSalesOrder({
         customerName: customer,
+        customerAddress: customerAddress || undefined,
+        responsiblePersonId: responsiblePersonId || undefined,
         items: itemsPayload,
         procurement: {
           purchaseOrders: purchaseOrdersPayload,
@@ -1342,6 +1374,8 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
       setReplenishmentRequirements(null);
       setShowForm(false);
       setCustomer('');
+      setCustomerAddress('');
+      setResponsiblePersonId('');
       setDraftItems([]);
       refresh();
     } catch (err: unknown) {
@@ -1349,6 +1383,184 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
     }
     setSaving(false);
   };
+
+  const fetchOrderLogs = async (orderId: string) => {
+    setLoadingLogs(true);
+    try {
+      const logs = await getAuditLogs({ entityId: orderId });
+      setOrderLogs(logs);
+    } catch (err) {
+      console.error('Failed to fetch order logs', err);
+    }
+    setLoadingLogs(false);
+  };
+
+  const toggleLogs = async () => {
+    if (!selectedOrder) return;
+    const nextShowLogs = !showLogs;
+    setShowLogs(nextShowLogs);
+    if (nextShowLogs) {
+      await fetchOrderLogs(selectedOrder.id);
+    }
+  };
+
+  if (selectedOrder) {
+    const totalAmount = selectedOrder.items?.reduce((sum, item) => {
+      const price = item.product?.salesPrice || 0;
+      return sum + (item.quantity * price);
+    }, 0) || 0;
+
+    return (
+      <div className="space-y-4 animate-fade-in">
+        {/* Mockup Button Bar */}
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3 flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <Btn variant="secondary" size="sm" onClick={() => { setSelectedOrder(null); setShowLogs(false); setOrderLogs([]); }}>
+              Back
+            </Btn>
+            {selectedOrder.status === 'draft' && (
+              <Btn variant="primary" size="sm" onClick={() => handleAction(selectedOrder.id, 'confirm')} disabled={acting === selectedOrder.id}>
+                Confirm
+              </Btn>
+            )}
+            {selectedOrder.status === 'confirmed' && (
+              <Btn variant="primary" size="sm" onClick={() => handleAction(selectedOrder.id, 'deliver')} disabled={acting === selectedOrder.id}>
+                Received (Deliver)
+              </Btn>
+            )}
+            {(selectedOrder.status === 'draft' || selectedOrder.status === 'confirmed') && (
+              <Btn variant="danger" size="sm" disabled={true}>
+                Cancel
+              </Btn>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Btn variant={showLogs ? 'primary' : 'secondary'} size="sm" onClick={toggleLogs}>
+              Logs
+            </Btn>
+          </div>
+        </div>
+
+        {/* Mockup Form card */}
+        <Card className="p-6 relative overflow-hidden border border-gray-200 shadow-sm">
+          {/* Header Info */}
+          <div className="flex justify-between items-start mb-6">
+            <div className="border-2 border-dashed border-gray-300 rounded-lg px-4 py-2 bg-gray-50/50 text-md font-mono font-bold text-gray-800">
+              {selectedOrder.id}
+            </div>
+            <div className="text-right">
+              <span className="text-xs text-gray-400 block uppercase tracking-wider font-semibold">Status</span>
+              <StatusBadge status={selectedOrder.status} />
+            </div>
+          </div>
+
+          {/* Form Fields Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+            <div className="space-y-3">
+              <div className="flex border-b border-gray-100 pb-2">
+                <span className="w-32 font-semibold text-gray-500">Customer</span>
+                <span className="text-gray-800 font-medium">{selectedOrder.customerName}</span>
+              </div>
+              <div className="flex border-b border-gray-100 pb-2">
+                <span className="w-32 font-semibold text-gray-500">Customer Address</span>
+                <span className="text-gray-800">{selectedOrder.customerAddress || 'N/A'}</span>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex border-b border-gray-100 pb-2">
+                <span className="w-32 font-semibold text-gray-500">Creation Date</span>
+                <span className="text-gray-800">{new Date(selectedOrder.createdAt).toLocaleDateString()}</span>
+              </div>
+              <div className="flex border-b border-gray-100 pb-2">
+                <span className="w-32 font-semibold text-gray-500">Responsible Person</span>
+                <span className="text-gray-800 font-medium text-sky-700">
+                  {selectedOrder.responsiblePerson?.name || 'Unassigned'}
+                  {selectedOrder.responsiblePerson?.email && ` (${selectedOrder.responsiblePerson.email})`}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Products Table */}
+          <div className="mt-8">
+            <h3 className="text-sm font-bold text-gray-700 mb-3 block uppercase tracking-wider">Products</h3>
+            <div className="overflow-x-auto border border-gray-100 rounded-xl">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-semibold uppercase tracking-wider">
+                    <th className="px-5 py-3">Products</th>
+                    <th className="px-5 py-3 text-center">Ordered Quantity</th>
+                    <th className="px-5 py-3 text-center">Delivered Quantity</th>
+                    <th className="px-5 py-3 text-center">Units</th>
+                    <th className="px-5 py-3 text-right">Unit Price</th>
+                    <th className="px-5 py-3 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 bg-white">
+                  {selectedOrder.items?.map((item, idx) => {
+                    const price = item.product?.salesPrice || 0;
+                    const total = item.quantity * price;
+                    const deliveredQty = selectedOrder.status === 'delivered' ? item.quantity : 0;
+                    return (
+                      <tr key={item.id || idx} className="hover:bg-gray-50/50 transition">
+                        <td className="px-5 py-3.5 font-medium text-gray-900">{item.product?.name || 'Unknown Product'}</td>
+                        <td className="px-5 py-3.5 text-center text-gray-600 font-semibold">{item.quantity}</td>
+                        <td className="px-5 py-3.5 text-center text-gray-600 font-semibold">{deliveredQty}</td>
+                        <td className="px-5 py-3.5 text-center text-gray-400">pcs</td>
+                        <td className="px-5 py-3.5 text-right text-gray-600 font-mono">${price.toFixed(2)}</td>
+                        <td className="px-5 py-3.5 text-right text-gray-900 font-semibold font-mono">${total.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Order Total */}
+            <div className="flex justify-end mt-4">
+              <div className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm font-semibold">
+                <span className="text-gray-500">Total:</span>
+                <span className="text-gray-900 text-base font-bold font-mono">${totalAmount.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Logs Panel */}
+        {showLogs && (
+          <Card className="p-5 animate-fade-in space-y-3 border border-gray-200">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+              <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Document Logs / Audit Trail</h3>
+              <Btn variant="ghost" size="sm" onClick={() => fetchOrderLogs(selectedOrder.id)} disabled={loadingLogs}>
+                <RefreshCw size={12} className={loadingLogs ? 'animate-spin-slow' : ''} />
+              </Btn>
+            </div>
+            {loadingLogs ? (
+              <div className="flex justify-center py-6"><RefreshCw size={16} className="animate-spin-slow text-sky-500" /></div>
+            ) : orderLogs.length === 0 ? (
+              <p className="text-xs text-gray-400 italic py-2 text-center">No logs recorded for this document.</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {orderLogs.map((log) => (
+                  <div key={log.id} className="text-xs flex items-center justify-between bg-gray-50/50 p-2.5 rounded-lg border border-gray-100">
+                    <div>
+                      <span className="font-semibold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded mr-2 uppercase text-[10px]">
+                        {log.action}
+                      </span>
+                      <span className="text-gray-600">
+                        {log.entityType} ID <span className="font-mono text-gray-400">{log.entityId}</span>
+                      </span>
+                    </div>
+                    <span className="text-gray-400 text-[10px]">{new Date(log.createdAt).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -1364,7 +1576,7 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
       {showForm && (
         <Card className="p-5 animate-fade-in space-y-4">
           <form onSubmit={handleCreate} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input
                 label="Customer Name"
                 placeholder="e.g. Grand Furniture Mart"
@@ -1372,6 +1584,33 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
                 onChange={e => setCustomer(e.target.value)}
                 required
               />
+              <Input
+                label="Customer Address (Vendor Address)"
+                placeholder="e.g. 123 Business Rd, Suite 100"
+                value={customerAddress}
+                onChange={e => setCustomerAddress(e.target.value)}
+              />
+              <Select
+                label="Responsible Person"
+                value={responsiblePersonId}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setResponsiblePersonId(e.target.value)}
+              >
+                <option value="">Select responsible person…</option>
+                {usersList
+                  .sort((a, b) => {
+                    const aIsSales = a.roles.includes('SALES');
+                    const bIsSales = b.roles.includes('SALES');
+                    if (aIsSales && !bIsSales) return -1;
+                    if (!aIsSales && bIsSales) return 1;
+                    return a.name.localeCompare(b.name);
+                  })
+                  .map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.roles.join(', ')})
+                    </option>
+                  ))
+                }
+              </Select>
             </div>
 
             {/* Add Item Panel */}
@@ -1431,7 +1670,7 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
             </div>
 
             <div className="flex justify-end gap-2">
-              <Btn type="button" variant="secondary" onClick={() => { setShowForm(false); setDraftItems([]); }}>Cancel</Btn>
+              <Btn type="button" variant="secondary" onClick={() => { setShowForm(false); setDraftItems([]); setCustomer(''); setCustomerAddress(''); setResponsiblePersonId(''); }}>Cancel</Btn>
               <Btn type="submit" disabled={saving || draftItems.length === 0}>
                 {saving ? <RefreshCw size={14} className="animate-spin-slow" /> : <Check size={14} />} Create Draft Order
               </Btn>
@@ -1453,6 +1692,7 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
                 <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
                   <th className="px-5 py-3">Order ID</th>
                   <th className="px-5 py-3">Customer</th>
+                  <th className="px-5 py-3">Responsible Person</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Items</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -1461,8 +1701,16 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
               <tbody className="divide-y divide-gray-50">
                 {orders.map(o => (
                   <tr key={o.id} className="hover:bg-sky-50/30 transition">
-                    <td className="px-5 py-3 font-mono text-xs text-gray-400">{o.id.slice(0, 8)}…</td>
+                    <td className="px-5 py-3">
+                      <button
+                        onClick={() => setSelectedOrder(o)}
+                        className="font-mono text-xs text-sky-600 hover:text-sky-800 hover:underline font-semibold cursor-pointer"
+                      >
+                        {o.id}
+                      </button>
+                    </td>
                     <td className="px-5 py-3 font-medium text-gray-800">{o.customerName}</td>
+                    <td className="px-5 py-3 text-gray-600 text-xs font-medium">{o.responsiblePerson?.name || 'Unassigned'}</td>
                     <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
                     <td className="px-5 py-3 text-gray-600">
                       <div className="flex flex-col gap-0.5">
