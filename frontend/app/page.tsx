@@ -22,7 +22,7 @@ import { getManufacturingOrders, createManufacturingOrder, startManufacturingOrd
 import { runProcurement } from '../features/procurement/services';
 import { getAuditLogs } from '../features/audit/services';
 import { getDashboardStats } from '../features/dashboard/services';
-import { getSalesOrders, createSalesOrder, confirmSalesOrder, deliverSalesOrder } from '../features/sales/services';
+import { getSalesOrders, createSalesOrder, confirmSalesOrder, deliverSalesOrder, checkSalesOrderProcurement } from '../features/sales/services';
 import type { Product, BoMItem } from '../features/product/types';
 import type { InventoryItem, StockLedgerEntry } from '../features/inventory/types';
 import type { PurchaseOrder } from '../features/purchase/types';
@@ -1183,6 +1183,7 @@ function AuditTab() {
 function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void }) {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [customer, setCustomer] = useState('');
@@ -1191,6 +1192,15 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
   const [draftItems, setDraftItems] = useState<{ productId: string; name: string; quantity: number }[]>([]);
   const [saving, setSaving] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
+
+  const [replenishmentRequirements, setReplenishmentRequirements] = useState<{
+    productId: string;
+    productName: string;
+    shortageQty: number;
+    recommendedQty: number;
+    vendorName: string;
+    orderQty: string;
+  }[] | null>(null);
 
   const { user } = useAuthStore();
   const canConfirm = user?.roles?.some(r => r === 'SALES' || r === 'OWNER' || r === 'ADMIN');
@@ -1216,9 +1226,10 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [o, p] = await Promise.all([getSalesOrders(), getProducts()]);
+      const [o, p, pos] = await Promise.all([getSalesOrders(), getProducts(), getPurchaseOrders()]);
       setOrders(o);
       setProducts(p);
+      setPurchaseOrders(pos);
     } catch { /* swallow */ }
     setLoading(false);
   }, []);
@@ -1250,17 +1261,89 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
     }
     setSaving(true);
     try {
+      const itemsPayload = draftItems.map(item => ({ productId: item.productId, quantity: item.quantity }));
+      const checkResult = await checkSalesOrderProcurement({ items: itemsPayload });
+
+      if (checkResult.available) {
+        await createSalesOrder({
+          customerName: customer,
+          items: itemsPayload
+        });
+        toast('Order placed successfully', 'success');
+        setShowForm(false);
+        setCustomer('');
+        setDraftItems([]);
+        refresh();
+      } else {
+        setReplenishmentRequirements(
+          checkResult.purchaseRequirements.map(req => ({
+            productId: req.productId,
+            productName: req.productName,
+            shortageQty: req.shortageQty,
+            recommendedQty: req.recommendedQty,
+            vendorName: '',
+            orderQty: String(req.recommendedQty),
+          }))
+        );
+      }
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to create sales order', 'error');
+    }
+    setSaving(false);
+  };
+
+  const handleConfirmReplenishment = async () => {
+    if (!replenishmentRequirements) return;
+
+    for (const req of replenishmentRequirements) {
+      if (!req.vendorName.trim()) {
+        toast(`Please specify a vendor for ${req.productName}`, 'error');
+        return;
+      }
+      const qty = parseFloat(req.orderQty);
+      if (isNaN(qty) || qty <= 0) {
+        toast(`Please specify a valid quantity for ${req.productName}`, 'error');
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      const itemsPayload = draftItems.map(item => ({ productId: item.productId, quantity: item.quantity }));
+
+      const poGroups: { [vendor: string]: { productId: string; quantity: number }[] } = {};
+      for (const req of replenishmentRequirements) {
+        const vendor = req.vendorName.trim();
+        if (!poGroups[vendor]) {
+          poGroups[vendor] = [];
+        }
+        poGroups[vendor].push({
+          productId: req.productId,
+          quantity: parseFloat(req.orderQty),
+        });
+      }
+
+      const purchaseOrdersPayload = Object.entries(poGroups).map(([vendorName, items]) => ({
+        vendorName,
+        items,
+      }));
+
       await createSalesOrder({
         customerName: customer,
-        items: draftItems.map(item => ({ productId: item.productId, quantity: item.quantity }))
+        items: itemsPayload,
+        procurement: {
+          purchaseOrders: purchaseOrdersPayload,
+        },
       });
-      toast('Order placed', 'success');
+
+      toast('Order and replenishment POs placed', 'success');
+      setReplenishmentRequirements(null);
       setShowForm(false);
       setCustomer('');
       setDraftItems([]);
       refresh();
     } catch (err: unknown) {
-      toast(err instanceof Error ? err.message : 'Failed to create sales order', 'error');
+      toast(err instanceof Error ? err.message : 'Failed to process replenishment', 'error');
     }
     setSaving(false);
   };
@@ -1370,7 +1453,6 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
                   <th className="px-5 py-3">Customer</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Items</th>
-                  <th className="px-5 py-3">Created</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -1389,7 +1471,6 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
                         )) || 'No items'}
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-gray-400 text-xs">{new Date(o.createdAt).toLocaleDateString()}</td>
                     <td className="px-5 py-3 text-right">
                       <div className="flex justify-end gap-2 items-center">
                         {o.status === 'draft' && (
@@ -1423,6 +1504,88 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
             </table>
           </div>
         </Card>
+      )}
+
+      {/* Replenishment Modal */}
+      {replenishmentRequirements && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setReplenishmentRequirements(null)}>
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-lg mx-4 animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-sky-50/50 rounded-t-2xl">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={18} className="text-amber-500" />
+                <h3 className="font-semibold text-gray-900">Procurement Replenishment</h3>
+              </div>
+              <button onClick={() => setReplenishmentRequirements(null)} className="p-1 hover:bg-gray-200/50 rounded-lg cursor-pointer"><X size={16} /></button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-gray-500 font-medium">
+                The following items have insufficient stock. Specify vendor and quantity to auto-create Purchase Orders:
+              </p>
+              
+              <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
+                {replenishmentRequirements.map((req, idx) => (
+                  <div key={req.productId} className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-semibold text-gray-800">{req.productName}</span>
+                      <span className="text-xs font-medium bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100">
+                        Shortage: {req.shortageQty}
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-400 mb-1">Vendor Name</label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          placeholder="e.g. Acme Vendor"
+                          list="vendor-suggestions"
+                          value={req.vendorName}
+                          onChange={e => {
+                            const newReqs = [...replenishmentRequirements];
+                            newReqs[idx].vendorName = e.target.value;
+                            setReplenishmentRequirements(newReqs);
+                          }}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-400 mb-1">Order Quantity</label>
+                        <input
+                          type="number"
+                          min="0.1"
+                          step="any"
+                          className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          value={req.orderQty}
+                          onChange={e => {
+                            const newReqs = [...replenishmentRequirements];
+                            newReqs[idx].orderQty = e.target.value;
+                            setReplenishmentRequirements(newReqs);
+                          }}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <datalist id="vendor-suggestions">
+                {Array.from(new Set(purchaseOrders.map(po => po.vendorName).filter(Boolean))).map(vendor => (
+                  <option key={vendor} value={vendor} />
+                ))}
+              </datalist>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+                <Btn variant="ghost" size="sm" onClick={() => setReplenishmentRequirements(null)}>Cancel</Btn>
+                <Btn size="sm" onClick={handleConfirmReplenishment} disabled={saving}>
+                  {saving ? <RefreshCw size={12} className="animate-spin-slow" /> : 'Confirm & Create'}
+                </Btn>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

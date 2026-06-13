@@ -20,6 +20,13 @@ router.post(
   controller.create
 );
 
+router.post(
+  '/check-procurement',
+  authenticate,
+  requirePermission(Module.SALES, PermissionAction.CREATE),
+  controller.checkProcurement
+);
+
 router.get(
   '/:id',
   authenticate,
