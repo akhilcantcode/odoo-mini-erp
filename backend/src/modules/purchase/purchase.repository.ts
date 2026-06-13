@@ -52,8 +52,26 @@ export class PurchaseRepository {
         });
       }
 
+      // Get next PO sequence ID
+      const lastOrder = await tx.purchaseOrder.findFirst({
+        where: { id: { startsWith: 'PO-' } },
+        orderBy: { id: 'desc' },
+      });
+
+      let nextId = 'PO-00001';
+      if (lastOrder) {
+        const parts = lastOrder.id.split('-');
+        if (parts.length === 2) {
+          const lastNum = parseInt(parts[1], 10);
+          if (!isNaN(lastNum)) {
+            nextId = `PO-${String(lastNum + 1).padStart(5, '0')}`;
+          }
+        }
+      }
+
       return tx.purchaseOrder.create({
         data: {
+          id: nextId,
           vendorName: data.vendorName,
           status: PurchaseOrderStatus.draft,
           companyId,

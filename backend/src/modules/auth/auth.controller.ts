@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from './auth.service';
-import { AuthenticatedRequest } from './auth.types';
+import { AuthenticatedRequest, RegisterSchema, LoginSchema, AddUserSchema, UpdateUserSchema } from './auth.types';
 import { RoleType } from '@prisma/client';
 import { invalidateUserCache } from './auth.middleware';
 
@@ -17,16 +17,19 @@ export class AuthController {
    */
   register = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { name, email, password, companyName } = req.body;
-      if (!name || !email || !password || !companyName) {
-        return res.status(400).json({
-          message: 'All fields (name, email, password, companyName) are required',
-        });
-      }
-
-      const result = await this.service.register(name, email, password, companyName);
+      const parsed = RegisterSchema.parse(req.body);
+      const result = await this.service.register(
+        parsed.name,
+        parsed.email,
+        parsed.password,
+        parsed.companyName
+      );
       return res.status(201).json(result);
     } catch (error: any) {
+      if (error.name === 'ZodError') {
+        const message = error.errors.map((e: any) => e.message).join(', ');
+        return res.status(400).json({ message: `Validation error: ${message}`, errors: error.errors });
+      }
       return res.status(400).json({ message: error.message || 'Registration failed' });
     }
   };
@@ -37,16 +40,14 @@ export class AuthController {
    */
   login = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { email, password } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({
-          message: 'Email and password are required',
-        });
-      }
-
-      const result = await this.service.login(email, password);
+      const parsed = LoginSchema.parse(req.body);
+      const result = await this.service.login(parsed.email, parsed.password);
       return res.status(200).json(result);
     } catch (error: any) {
+      if (error.name === 'ZodError') {
+        const message = error.errors.map((e: any) => e.message).join(', ');
+        return res.status(400).json({ message: `Validation error: ${message}`, errors: error.errors });
+      }
       return res.status(401).json({ message: error.message || 'Login failed' });
     }
   };
@@ -92,22 +93,21 @@ export class AuthController {
   addUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       if (!req.user) return res.status(401).json({ message: 'Not authenticated' });
-      const { name, email, password, roles } = req.body;
-      if (!name || !email || !password || !roles || !Array.isArray(roles)) {
-        return res.status(400).json({
-          message: 'Fields (name, email, password, roles as array) are required',
-        });
-      }
-
+      
+      const parsed = AddUserSchema.parse(req.body);
       const result = await this.service.createUser(
         req.user.companyId,
-        name,
-        email,
-        password,
-        roles as RoleType[]
+        parsed.name,
+        parsed.email,
+        parsed.password,
+        parsed.roles as RoleType[]
       );
       return res.status(201).json(result);
     } catch (error: any) {
+      if (error.name === 'ZodError') {
+        const message = error.errors.map((e: any) => e.message).join(', ');
+        return res.status(400).json({ message: `Validation error: ${message}`, errors: error.errors });
+      }
       return res.status(400).json({ message: error.message || 'Failed to create user' });
     }
   };
@@ -134,18 +134,22 @@ export class AuthController {
     try {
       if (!req.user) return res.status(401).json({ message: 'Not authenticated' });
       const { id } = req.params;
-      const { name, email, roles } = req.body;
-
+      
+      const parsed = UpdateUserSchema.parse(req.body);
       const result = await this.service.updateUser(
         req.user.companyId,
         id,
-        name,
-        email,
-        roles as RoleType[]
+        parsed.name,
+        parsed.email,
+        parsed.roles as RoleType[]
       );
       invalidateUserCache(id); // evict stale cached profile immediately
       return res.status(200).json(result);
     } catch (error: any) {
+      if (error.name === 'ZodError') {
+        const message = error.errors.map((e: any) => e.message).join(', ');
+        return res.status(400).json({ message: `Validation error: ${message}`, errors: error.errors });
+      }
       return res.status(400).json({ message: error.message || 'Failed to update user' });
     }
   };

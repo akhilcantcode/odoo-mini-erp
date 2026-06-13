@@ -156,9 +156,27 @@ export class ProductRepository {
           },
         });
       } else {
+        // Get next BOM sequence ID
+        const lastBom = await tx.boM.findFirst({
+          where: { id: { startsWith: 'BOM-' } },
+          orderBy: { id: 'desc' },
+        });
+
+        let nextId = 'BOM-0001';
+        if (lastBom) {
+          const parts = lastBom.id.split('-');
+          if (parts.length === 2) {
+            const lastNum = parseInt(parts[1], 10);
+            if (!isNaN(lastNum)) {
+              nextId = `BOM-${String(lastNum + 1).padStart(4, '0')}`;
+            }
+          }
+        }
+
         // Create new BoM with items
         return tx.boM.create({
           data: {
+            id: nextId,
             productId,
             companyId,
             items: {

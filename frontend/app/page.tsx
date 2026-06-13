@@ -324,10 +324,10 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
               <option value="manufacture">Manufacture</option>
             </Select>
             <div className="flex items-end gap-2">
-              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+              {/* <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
                 <input type="checkbox" checked={fDemand} onChange={e => setFDemand(e.target.checked)} className="rounded border-gray-300 text-sky-600 focus:ring-sky-500" />
                 MTO
-              </label>
+              </label> */}
               <Btn disabled={saving}>{saving ? <RefreshCw size={12} className="animate-spin-slow" /> : <Check size={12} />} Save</Btn>
             </div>
           </form>
@@ -349,7 +349,7 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
                   <th className="px-5 py-3">Sales Price</th>
                   <th className="px-5 py-3">Cost Price</th>
                   <th className="px-5 py-3">Strategy</th>
-                  <th className="px-5 py-3">MTO</th>
+                  {/* <th className="px-5 py-3">MTO</th> */}
                   <th className="px-5 py-3">On Hand</th>
                 </tr>
               </thead>
@@ -360,7 +360,7 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
                     <td className="px-5 py-3 text-gray-600">{p.salesPrice != null ? `$${p.salesPrice}` : '—'}</td>
                     <td className="px-5 py-3 text-gray-600">{p.costPrice != null ? `$${p.costPrice}` : '—'}</td>
                     <td className="px-5 py-3"><StatusBadge status={p.procurementType} /></td>
-                    <td className="px-5 py-3">{p.procureOnDemand ? <span className="text-sky-600 font-medium text-xs">Yes</span> : <span className="text-gray-400 text-xs">No</span>}</td>
+                    {/* <td className="px-5 py-3">{p.procureOnDemand ? <span className="text-sky-600 font-medium text-xs">Yes</span> : <span className="text-gray-400 text-xs">No</span>}</td> */}
                     <td className="px-5 py-3 text-gray-600">{p.inventory?.onHandQty ?? 0}</td>
                   </tr>
                 ))}
@@ -709,7 +709,7 @@ function PurchasesTab({ toast }: { toast: (m: string, t: 'success' | 'error') =>
       const [poList, prodList] = await Promise.all([getPurchaseOrders(), getProducts()]);
       setOrders(poList);
       setProducts(prodList);
-    } catch {}
+    } catch { }
     setLoading(false);
   }, []);
 
@@ -800,7 +800,7 @@ function PurchasesTab({ toast }: { toast: (m: string, t: 'success' | 'error') =>
             {/* Add Item Panel */}
             <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
               <p className="text-xs font-semibold text-gray-500">Order Items</p>
-              
+
               <div className="flex gap-3 items-end flex-wrap">
                 <div className="flex-1 min-w-[200px]">
                   <Select
@@ -934,7 +934,7 @@ function ManufacturingTab({ toast }: { toast: (m: string, t: 'success' | 'error'
       const [moList, prodList] = await Promise.all([getManufacturingOrders(), getProducts()]);
       setOrders(moList);
       setProducts(prodList);
-    } catch {}
+    } catch { }
     setLoading(false);
   }, []);
 
@@ -1118,7 +1118,7 @@ function AuditTab() {
     setLoading(true);
     try {
       setLogs(await getAuditLogs(filterType ? { entityType: filterType } : undefined));
-    } catch {}
+    } catch { }
     setLoading(false);
   }, [filterType]);
 
@@ -1377,7 +1377,7 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
             {/* Add Item Panel */}
             <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
               <p className="text-xs font-semibold text-gray-500">Order Items</p>
-              
+
               <div className="flex gap-3 items-end flex-wrap">
                 <div className="flex-1 min-w-[200px]">
                   <Select
@@ -1599,7 +1599,7 @@ function UsersTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [roles, setRoles] = useState<ManagedRole[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // User Form State
   const [showUserForm, setShowUserForm] = useState(false);
   const [uName, setUName] = useState('');
@@ -1753,7 +1753,7 @@ function UsersTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
             <Card className="p-5 animate-fade-in">
               <form onSubmit={handleAddUser} className="space-y-4">
                 <h3 className="text-sm font-semibold text-gray-800">{editingUserId ? 'Edit User' : 'Create User'}</h3>
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Name" value={uName} onChange={e => setUName(e.target.value)} required />
                   <Input label="Email" type="email" value={uEmail} onChange={e => setUEmail(e.target.value)} required />
@@ -1919,7 +1919,7 @@ export default function Home() {
   if (!token) {
     return (
       <>
-        <AuthScreen onLogin={() => {}} />
+        <AuthScreen onLogin={() => { }} />
         {toastData && <Toast message={toastData.message} type={toastData.type} onClose={() => setToastData(null)} />}
       </>
     );
@@ -1962,11 +1962,10 @@ export default function Home() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                activeTab === tab.key
-                  ? 'bg-sky-50 text-sky-700 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${activeTab === tab.key
+                ? 'bg-sky-50 text-sky-700 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
             >
               <span className={activeTab === tab.key ? 'text-sky-600' : 'text-gray-400'}>{tab.icon}</span>
               {tab.label}
