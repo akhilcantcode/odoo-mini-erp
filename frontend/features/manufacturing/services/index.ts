@@ -11,7 +11,7 @@ export async function getManufacturingOrder(id: string): Promise<ManufacturingOr
 
 export async function createManufacturingOrder(data: {
   productId: string;
-  qtyToProduce: number;
+  quantity: number;
 }): Promise<ManufacturingOrder> {
   return fetchApi('/manufacturing', {
     method: 'POST',

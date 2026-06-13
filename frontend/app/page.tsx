@@ -533,6 +533,7 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
 function InventoryTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [ledger, setLedger] = useState<StockLedgerEntry[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdjust, setShowAdjust] = useState(false);
   const [adjProductId, setAdjProductId] = useState('');
@@ -544,9 +545,10 @@ function InventoryTab({ toast }: { toast: (m: string, t: 'success' | 'error') =>
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [inv, led] = await Promise.all([getInventory(), getStockLedger()]);
+      const [inv, led, prodList] = await Promise.all([getInventory(), getStockLedger(), getProducts()]);
       setItems(inv);
       setLedger(led);
+      setProducts(prodList);
     } catch { /* swallow */ }
     setLoading(false);
   }, []);
@@ -589,7 +591,14 @@ function InventoryTab({ toast }: { toast: (m: string, t: 'success' | 'error') =>
       {showAdjust && (
         <Card className="p-5 animate-fade-in">
           <form onSubmit={handleAdjust} className="flex gap-3 items-end flex-wrap">
-            <Input label="Product ID" placeholder="uuid" value={adjProductId} onChange={e => setAdjProductId(e.target.value)} required />
+            <div className="flex-1 min-w-[200px]">
+              <Select label="Product" value={adjProductId} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setAdjProductId(e.target.value)} required>
+                <option value="">Select product...</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </Select>
+            </div>
             <Input label="Change Qty" type="number" placeholder="+10 or -5" value={adjQty} onChange={e => setAdjQty(e.target.value)} required />
             <Input label="Reference" placeholder="(optional)" value={adjRef} onChange={e => setAdjRef(e.target.value)} />
             <Btn disabled={saving}>{saving ? <RefreshCw size={12} className="animate-spin-slow" /> : <Check size={12} />} Apply</Btn>
@@ -671,31 +680,71 @@ function InventoryTab({ toast }: { toast: (m: string, t: 'success' | 'error') =>
 // ─── Purchases Tab ───
 function PurchasesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void }) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [vendor, setVendor] = useState('');
   const [poProductId, setPoProductId] = useState('');
   const [poQty, setPoQty] = useState('');
+  const [draftItems, setDraftItems] = useState<{ productId: string; name: string; quantity: number }[]>([]);
   const [saving, setSaving] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    try { setOrders(await getPurchaseOrders()); } catch {}
+    try {
+      const [poList, prodList] = await Promise.all([getPurchaseOrders(), getProducts()]);
+      setOrders(poList);
+      setProducts(prodList);
+    } catch {}
     setLoading(false);
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { refresh(); }, [refresh]);
 
+  const handleAddDraftItem = () => {
+    if (!poProductId || !poQty) return;
+    const prod = products.find(p => p.id === poProductId);
+    if (!prod) return;
+
+    const existingIndex = draftItems.findIndex(i => i.productId === poProductId);
+    if (existingIndex > -1) {
+      setDraftItems(prev => {
+        const updated = [...prev];
+        updated[existingIndex].quantity += parseInt(poQty);
+        return updated;
+      });
+    } else {
+      setDraftItems(prev => [
+        ...prev,
+        { productId: poProductId, name: prod.name, quantity: parseInt(poQty) }
+      ]);
+    }
+    setPoProductId('');
+    setPoQty('');
+  };
+
+  const handleRemoveDraftItem = (index: number) => {
+    setDraftItems(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (draftItems.length === 0) {
+      toast('Please add at least one item to the purchase order', 'error');
+      return;
+    }
     setSaving(true);
     try {
-      await createPurchaseOrder({ vendorName: vendor, items: [{ productId: poProductId, quantity: parseInt(poQty) }] });
+      await createPurchaseOrder({
+        vendorName: vendor,
+        items: draftItems.map(item => ({ productId: item.productId, quantity: item.quantity }))
+      });
       toast('Purchase Order created', 'success');
       setShowForm(false);
-      setVendor(''); setPoProductId(''); setPoQty('');
+      setVendor('');
+      setDraftItems([]);
       refresh();
     } catch (err: unknown) { toast(err instanceof Error ? err.message : 'Failed', 'error'); }
     setSaving(false);
@@ -723,12 +772,80 @@ function PurchasesTab({ toast }: { toast: (m: string, t: 'success' | 'error') =>
       </div>
 
       {showForm && (
-        <Card className="p-5 animate-fade-in">
-          <form onSubmit={handleCreate} className="flex gap-3 items-end flex-wrap">
-            <Input label="Vendor Name" placeholder="Supplier Inc." value={vendor} onChange={e => setVendor(e.target.value)} required />
-            <Input label="Product ID" placeholder="uuid" value={poProductId} onChange={e => setPoProductId(e.target.value)} required />
-            <Input label="Quantity" type="number" min="1" placeholder="10" value={poQty} onChange={e => setPoQty(e.target.value)} required />
-            <Btn disabled={saving}>{saving ? <RefreshCw size={12} className="animate-spin-slow" /> : <Check size={12} />} Create</Btn>
+        <Card className="p-5 animate-fade-in space-y-4">
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Vendor Name"
+                placeholder="Supplier Inc."
+                value={vendor}
+                onChange={e => setVendor(e.target.value)}
+                required
+              />
+            </div>
+
+            {/* Add Item Panel */}
+            <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
+              <p className="text-xs font-semibold text-gray-500">Order Items</p>
+              
+              <div className="flex gap-3 items-end flex-wrap">
+                <div className="flex-1 min-w-[200px]">
+                  <Select
+                    label="Product"
+                    value={poProductId}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPoProductId(e.target.value)}
+                  >
+                    <option value="">Select product…</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="w-28">
+                  <Input
+                    label="Quantity"
+                    type="number"
+                    min="1"
+                    placeholder="10"
+                    value={poQty}
+                    onChange={e => setPoQty(e.target.value)}
+                  />
+                </div>
+                <Btn type="button" variant="secondary" onClick={handleAddDraftItem}>
+                  <Plus size={14} /> Add
+                </Btn>
+              </div>
+
+              {/* Draft Items List */}
+              {draftItems.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {draftItems.map((item, index) => (
+                    <div key={index} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-gray-100 text-sm">
+                      <span className="font-medium text-gray-800">{item.name}</span>
+                      <div className="flex items-center gap-4">
+                        <span className="text-gray-500">Qty: {item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDraftItem(index)}
+                          className="text-red-500 hover:text-red-700 transition cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Btn type="button" variant="secondary" onClick={() => { setShowForm(false); setDraftItems([]); }}>Cancel</Btn>
+              <Btn type="submit" disabled={saving || draftItems.length === 0}>
+                {saving ? <RefreshCw size={14} className="animate-spin-slow" /> : <Check size={14} />} Create Purchase Order
+              </Btn>
+            </div>
           </form>
         </Card>
       )}
@@ -790,6 +907,7 @@ function PurchasesTab({ toast }: { toast: (m: string, t: 'success' | 'error') =>
 // ─── Manufacturing Tab ───
 function ManufacturingTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void }) {
   const [orders, setOrders] = useState<ManufacturingOrder[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [moProductId, setMoProductId] = useState('');
@@ -799,7 +917,11 @@ function ManufacturingTab({ toast }: { toast: (m: string, t: 'success' | 'error'
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    try { setOrders(await getManufacturingOrders()); } catch {}
+    try {
+      const [moList, prodList] = await Promise.all([getManufacturingOrders(), getProducts()]);
+      setOrders(moList);
+      setProducts(prodList);
+    } catch {}
     setLoading(false);
   }, []);
 
@@ -810,7 +932,7 @@ function ManufacturingTab({ toast }: { toast: (m: string, t: 'success' | 'error'
     e.preventDefault();
     setSaving(true);
     try {
-      await createManufacturingOrder({ productId: moProductId, qtyToProduce: parseInt(moQty) });
+      await createManufacturingOrder({ productId: moProductId, quantity: parseInt(moQty) });
       toast('Manufacturing Order created', 'success');
       setShowForm(false);
       setMoProductId(''); setMoQty('');
@@ -843,7 +965,14 @@ function ManufacturingTab({ toast }: { toast: (m: string, t: 'success' | 'error'
       {showForm && (
         <Card className="p-5 animate-fade-in">
           <form onSubmit={handleCreate} className="flex gap-3 items-end flex-wrap">
-            <Input label="Product ID" placeholder="uuid of finished good" value={moProductId} onChange={e => setMoProductId(e.target.value)} required />
+            <div className="flex-1 min-w-[200px]">
+              <Select label="Product" value={moProductId} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMoProductId(e.target.value)} required>
+                <option value="">Select product...</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </Select>
+            </div>
             <Input label="Qty to Produce" type="number" min="1" placeholder="5" value={moQty} onChange={e => setMoQty(e.target.value)} required />
             <Btn disabled={saving}>{saving ? <RefreshCw size={12} className="animate-spin-slow" /> : <Check size={12} />} Create</Btn>
           </form>
@@ -873,7 +1002,7 @@ function ManufacturingTab({ toast }: { toast: (m: string, t: 'success' | 'error'
                   <tr key={o.id} className="hover:bg-sky-50/30 transition">
                     <td className="px-5 py-3 font-mono text-sm text-gray-800">{o.moNumber}</td>
                     <td className="px-5 py-3 text-gray-700">{o.product?.name || o.productId.slice(0, 8) + '…'}</td>
-                    <td className="px-5 py-3 text-gray-600">{o.qtyToProduce}</td>
+                    <td className="px-5 py-3 text-gray-700">{o.quantity}</td>
                     <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
                     <td className="px-5 py-3 text-gray-400 text-xs">{new Date(o.createdAt).toLocaleDateString()}</td>
                     <td className="px-5 py-3">
