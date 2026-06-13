@@ -10,7 +10,10 @@ import {
   AlertTriangle,
   ArrowRight,
   Sparkles,
-  Inbox
+  Inbox,
+  CheckCircle2,
+  Activity,
+  Calendar
 } from 'lucide-react';
 import { getDashboardStats } from '../services';
 import { getSalesOrders } from '../../sales/services';
@@ -22,32 +25,37 @@ import { InventoryItem } from '../../inventory/types';
 import { Product } from '../../product/types';
 
 // Helper component for KPI Cards Sparkline
-function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
-  if (!data || data.length === 0) return null;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
+function KpiSparkline({ data, gradientId }: { data: { v: number }[]; gradientId: string }) {
+  // Build a smooth SVG area sparkline from the data points
+  const width = 200;
+  const height = 56;
+  const max = Math.max(...data.map(d => d.v));
+  const min = Math.min(...data.map(d => d.v));
   const range = max - min || 1;
-  const width = 120;
-  const height = 30;
-  const points = data.map((val, idx) => {
-    const x = (idx / (data.length - 1)) * width;
-    const y = height - ((val - min) / range) * height;
-    return `${x},${y}`;
-  }).join(' ');
+  
+  const points = data.map((d, i) => ({
+    x: (i / (data.length - 1)) * width,
+    y: height - ((d.v - min) / range) * (height - 8) - 4
+  }));
 
-  const strokeColor = positive ? '#0284c7' : '#ef4444'; // Sky blue or red
-  const fillPoints = `0,${height} ${points} ${width},${height}`;
+  // Build bezier path
+  let linePath = `M ${points[0].x},${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const cx = (points[i].x + points[i + 1].x) / 2;
+    linePath += ` C ${cx},${points[i].y} ${cx},${points[i + 1].y} ${points[i + 1].x},${points[i + 1].y}`;
+  }
+  const areaPath = `${linePath} L ${width},${height} L 0,${height} Z`;
 
   return (
-    <svg className="w-full h-8 overflow-visible opacity-80" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <svg className="w-full h-full block" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
       <defs>
-        <linearGradient id={`spark-grad-${positive ? 'pos' : 'neg'}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={strokeColor} stopOpacity="0.15"/>
-          <stop offset="100%" stopColor={strokeColor} stopOpacity="0"/>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={`M ${points}`} fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d={`M ${fillPoints}`} fill={`url(#spark-grad-${positive ? 'pos' : 'neg'})`} />
+      <path d={areaPath} fill={`url(#${gradientId})`} />
+      <path d={linePath} fill="none" stroke="#0ea5e9" strokeWidth="2" />
     </svg>
   );
 }
@@ -205,16 +213,16 @@ export default function DashboardOverview() {
   // Divisions Data for Donut Chart
   const divisionsData = React.useMemo(() => {
     // 4 divisions
-    const labels = ['Wholesale', 'Retail', 'Direct', 'Online Store'];
-    const percentages = [0.45, 0.25, 0.20, 0.10];
-    const colors = ['#0284c7', '#38bdf8', '#0ea5e9', '#7dd3fc']; // Premium Blue palette
+    const labels = ['Wholesale', 'Retail', 'Direct', 'Export'];
+    const percentages = [0.43, 0.28, 0.18, 0.11];
+    const colors = ['#0ea5e9', '#22c55e', '#eab308', '#a855f7']; // Match screenshot colors
 
     return labels.map((label, idx) => {
       const value = totalRevenue * percentages[idx];
       return {
         name: label,
         percentage: percentages[idx] * 100,
-        value: value === 0 ? [5400, 3000, 2400, 1200][idx] : value, // fallback if revenue is 0
+        value: value === 0 ? [5160, 3360, 2160, 1320][idx] : value, // fallback if revenue is 0
         color: colors[idx]
       };
     });
@@ -264,7 +272,7 @@ export default function DashboardOverview() {
 
   // Calculate coordinates for Monthly Revenue SVG Line Chart
   const svgWidth = 600;
-  const svgHeight = 220;
+  const svgHeight = 280;
   const chartPaddingLeft = 50;
   const chartPaddingRight = 30;
   const chartPaddingTop = 20;
@@ -283,8 +291,22 @@ export default function DashboardOverview() {
     return { x, y, data: d };
   });
 
-  const linePathD = `M ${linePoints.map(p => `${p.x},${p.y}`).join(' ')}`;
-  const fillPathD = `M ${linePoints[0].x},${chartPaddingTop + chartInnerHeight} ${linePoints.map(p => `${p.x},${p.y}`).join(' ')} ${linePoints[linePoints.length - 1].x},${chartPaddingTop + chartInnerHeight} Z`;
+  const computeBezierPath = (points: { x: number, y: number }[]) => {
+    if (points.length === 0) return '';
+    let d = `M ${points[0].x},${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const curr = points[i];
+      const next = points[i + 1];
+      const controlX = (curr.x + next.x) / 2;
+      d += ` C ${controlX},${curr.y} ${controlX},${next.y} ${next.x},${next.y}`;
+    }
+    return d;
+  };
+
+  const linePathD = computeBezierPath(linePoints);
+  const fillPathD = linePoints.length > 0 
+    ? `${linePathD} L ${linePoints[linePoints.length - 1].x},${chartPaddingTop + chartInnerHeight} L ${linePoints[0].x},${chartPaddingTop + chartInnerHeight} Z`
+    : '';
 
   // Donut chart calculations
   let accumulatedAngle = 0;
@@ -324,105 +346,120 @@ export default function DashboardOverview() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* Revenue Card */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex flex-col justify-between group hover:shadow-md transition">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Revenue</span>
-              <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-                <DollarSign size={15} />
+        <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md">
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Revenue</p>
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-50 text-sky-600">
+                <DollarSign className="h-4 w-4" />
               </div>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 font-mono tracking-tight">
-              ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-            </h3>
-            <span className="inline-flex items-center text-[10px] font-medium text-emerald-600 mt-1">
-              <TrendingUp size={11} className="mr-0.5" /> +12.5% vs last month
-            </span>
+            <p className="mt-3 text-3xl font-semibold tracking-tight text-gray-900">
+              ${totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+              <span className="inline-flex items-center gap-1 font-medium text-emerald-500">
+                <TrendingUp className="h-3 w-3" />
+                +12.5%
+              </span>
+              <span className="text-gray-400">vs last month</span>
+            </div>
           </div>
-          <div className="mt-4 pt-2 border-t border-gray-50">
-            <Sparkline data={sparklineRevenue} positive={true} />
+          <div className="h-14 w-full">
+            <KpiSparkline data={sparklineRevenue.map(v => ({ v }))} gradientId="kpi-grad-revenue" />
           </div>
         </div>
 
         {/* Orders Card */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex flex-col justify-between group hover:shadow-md transition">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Orders</span>
-              <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-                <ShoppingBag size={15} />
+        <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md">
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Orders</p>
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-50 text-sky-600">
+                <Calendar className="h-4 w-4" />
               </div>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 font-mono tracking-tight">
+            <p className="mt-3 text-3xl font-semibold tracking-tight text-gray-900">
               {totalOrders.toLocaleString()}
-            </h3>
-            <span className="inline-flex items-center text-[10px] font-medium text-emerald-600 mt-1">
-              <TrendingUp size={11} className="mr-0.5" /> +8.3% this week
-            </span>
+            </p>
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+              <span className="inline-flex items-center gap-1 font-medium text-emerald-500">
+                <TrendingUp className="h-3 w-3" />
+                +8.3%
+              </span>
+              <span className="text-gray-400">this week</span>
+            </div>
           </div>
-          <div className="mt-4 pt-2 border-t border-gray-50">
-            <Sparkline data={sparklineOrders} positive={true} />
+          <div className="h-14 w-full">
+            <KpiSparkline data={sparklineOrders.map(v => ({ v }))} gradientId="kpi-grad-orders" />
           </div>
         </div>
 
         {/* Stock Value Card */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex flex-col justify-between group hover:shadow-md transition">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Stock Value</span>
-              <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-                <TrendingUp size={15} />
+        <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md">
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Stock Value</p>
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-50 text-sky-600">
+                <TrendingUp className="h-4 w-4" />
               </div>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 font-mono tracking-tight">
-              ${totalStockVal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-            </h3>
-            <span className="inline-flex items-center text-[10px] font-medium text-gray-400 mt-1">
-              Across all inventory
-            </span>
+            <p className="mt-3 text-3xl font-semibold tracking-tight text-gray-900">
+              ${totalStockVal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+              <span className="inline-flex items-center gap-1 font-medium text-gray-400">
+                <TrendingUp className="h-3 w-3 invisible" />
+                Across all inventory
+              </span>
+            </div>
           </div>
-          <div className="mt-4 pt-2 border-t border-gray-50">
-            <Sparkline data={sparklineStock} positive={true} />
+          <div className="h-14 w-full">
+            <KpiSparkline data={sparklineStock.map(v => ({ v }))} gradientId="kpi-grad-stock" />
           </div>
         </div>
 
         {/* Customers Card */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex flex-col justify-between group hover:shadow-md transition">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-400 tracking-wide uppercase">Customers</span>
-              <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-                <Users size={15} />
+        <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md">
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">Customers</p>
+              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-50 text-sky-600">
+                <Users className="h-4 w-4" />
               </div>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 font-mono tracking-tight">
+            <p className="mt-3 text-3xl font-semibold tracking-tight text-gray-900">
               {uniqueCustomers.toLocaleString()}
-            </h3>
-            <span className="inline-flex items-center text-[10px] font-medium text-emerald-600 mt-1">
-              <TrendingUp size={11} className="mr-0.5" /> +15.7% new signups
-            </span>
+            </p>
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+              <span className="inline-flex items-center gap-1 font-medium text-emerald-500">
+                <TrendingUp className="h-3 w-3" />
+                +15.7%
+              </span>
+              <span className="text-gray-400">new signups</span>
+            </div>
           </div>
-          <div className="mt-4 pt-2 border-t border-gray-50">
-            <Sparkline data={sparklineCustomers} positive={true} />
+          <div className="h-14 w-full">
+            <KpiSparkline data={sparklineCustomers.map(v => ({ v }))} gradientId="kpi-grad-customers" />
           </div>
         </div>
 
       </div>
 
       {/* Row 2: Monthly Revenue & Division Donut */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
         {/* Monthly Revenue Chart (takes 2/3) */}
-        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm lg:col-span-2 flex flex-col justify-between">
+        <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm lg:col-span-2 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-bold text-gray-800">Monthly Revenue</h3>
-                <p className="text-[10px] text-gray-400">Total gross invoice value over time</p>
+                <h2 className="text-base font-semibold text-gray-900">Monthly Revenue</h2>
+                <p className="mt-0.5 text-xs text-gray-400">Total gross invoice value over time</p>
               </div>
               <div className="flex items-center gap-1 bg-gray-50 p-0.5 rounded-lg border border-gray-100">
-                {['6 Months'].map(time => (
-                  <span key={time} className="px-2 py-0.5 text-[10px] font-semibold text-sky-700 bg-white rounded shadow-sm">
+                {['3M', '6 Months', '1Y'].map(time => (
+                  <span key={time} className={`px-2 py-0.5 text-[10px] font-semibold rounded ${time === '6 Months' ? 'text-sky-700 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700 cursor-pointer transition'}`}>
                     {time}
                   </span>
                 ))}
@@ -430,7 +467,7 @@ export default function DashboardOverview() {
             </div>
 
             {/* Interactive SVG Chart */}
-            <div className="relative mt-2">
+            <div className="relative mt-2" style={{ minHeight: 260 }}>
               <svg 
                 ref={lineChartRef}
                 viewBox={`0 0 ${svgWidth} ${svgHeight}`}
@@ -456,14 +493,16 @@ export default function DashboardOverview() {
                         y1={y} 
                         x2={svgWidth - chartPaddingRight} 
                         y2={y} 
-                        stroke="#f1f5f9" 
+                        stroke="#e2e8f0" 
                         strokeWidth="1" 
+                        strokeDasharray="3,3"
                       />
                       <text 
                         x={chartPaddingLeft - 10} 
                         y={y + 4} 
                         textAnchor="end" 
-                        className="text-[10px] font-mono fill-gray-400"
+                        className="text-[11px] fill-gray-400"
+                        style={{ fontSize: 12 }}
                       >
                         ${labelValue >= 1000 ? `${(labelValue / 1000).toFixed(0)}k` : labelValue}
                       </text>
@@ -478,9 +517,10 @@ export default function DashboardOverview() {
                     <text 
                       key={idx}
                       x={x} 
-                      y={svgHeight - 10} 
+                      y={svgHeight - 6} 
                       textAnchor="middle" 
-                      className="text-[10px] font-medium fill-gray-400"
+                      className="fill-gray-400"
+                      style={{ fontSize: 12 }}
                     >
                       {d.month}
                     </text>
@@ -499,10 +539,10 @@ export default function DashboardOverview() {
                     key={idx}
                     cx={p.x}
                     cy={p.y}
-                    r={hoveredMonthIndex === idx ? 5 : 3}
+                    r={hoveredMonthIndex === idx ? 6 : 4}
                     fill={hoveredMonthIndex === idx ? '#0284c7' : '#ffffff'}
                     stroke="#0284c7"
-                    strokeWidth={hoveredMonthIndex === idx ? 2 : 1.5}
+                    strokeWidth={2}
                     className="transition-all duration-150"
                   />
                 ))}
@@ -526,26 +566,18 @@ export default function DashboardOverview() {
               {/* Float HTML Tooltip */}
               {hoveredMonthIndex !== null && (
                 <div 
-                  className="absolute z-10 pointer-events-none bg-slate-900 text-white rounded-lg p-2.5 shadow-lg border border-slate-800 text-xs font-sans min-w-[120px] transition-transform duration-75"
+                  className="absolute z-10 pointer-events-none bg-white rounded-xl p-3 shadow-xl border border-gray-200 text-xs font-sans min-w-[120px]"
                   style={{ 
                     left: `${(lineTooltipPos.x / svgWidth) * 100}%`, 
                     top: `${(lineTooltipPos.y / svgHeight) * 100}%`,
-                    transform: 'translate(-50%, -100%)' 
+                    transform: 'translate(-50%, -100%)',
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)'
                   }}
                 >
-                  <p className="font-semibold text-gray-300">{monthlyRevenueData[hoveredMonthIndex].month}</p>
-                  <div className="flex items-center justify-between gap-4 mt-1 border-t border-slate-800 pt-1.5">
-                    <span className="text-gray-400 text-[10px] uppercase font-semibold">Sales:</span>
-                    <span className="font-bold text-sky-400 font-mono">
-                      ${monthlyRevenueData[hoveredMonthIndex].revenue.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-gray-400 text-[10px] uppercase font-semibold">Orders:</span>
-                    <span className="font-semibold text-white font-mono">
-                      {monthlyRevenueData[hoveredMonthIndex].orders}
-                    </span>
-                  </div>
+                  <p className="font-semibold text-gray-800">{monthlyRevenueData[hoveredMonthIndex].month}</p>
+                  <p className="text-sky-500 font-medium mt-1">
+                    Revenue : ${monthlyRevenueData[hoveredMonthIndex].revenue >= 1000 ? `$${(monthlyRevenueData[hoveredMonthIndex].revenue / 1000).toFixed(0)}k` : `$${monthlyRevenueData[hoveredMonthIndex].revenue}`}
+                  </p>
                 </div>
               )}
             </div>
@@ -553,20 +585,22 @@ export default function DashboardOverview() {
         </div>
 
         {/* Division Donut Chart (takes 1/3) */}
-        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm flex flex-col justify-between">
+        <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
           <div>
-            <h3 className="text-sm font-bold text-gray-800">Sales by Division</h3>
-            <p className="text-[10px] text-gray-400 mb-4">Proportion of business unit contributions</p>
+            <h2 className="text-base font-semibold text-gray-900">Sales by Division</h2>
+            <p className="mt-0.5 text-xs text-gray-400">Proportion of business unit contributions</p>
             
-            <div className="relative flex items-center justify-center py-4">
-              <svg viewBox="0 0 200 200" className="w-44 h-44 overflow-visible">
+            <div className="relative flex items-center justify-center" style={{ height: 200 }}>
+              <svg viewBox="0 0 200 200" className="w-[200px] h-[200px] overflow-visible">
                 {divisionsData.map((d, idx) => {
-                  const r = 60;
+                  const r = 72;
                   const circ = 2 * Math.PI * r;
-                  const strokeDasharray = circ;
-                  const strokeDashoffset = circ * (1 - d.percentage / 100);
-                  const strokeWidth = hoveredDivisionIndex === idx ? 20 : 15;
-                  const startAngle = (accumulatedAngle / 100) * 360 - 90;
+                  // Leave a small gap between segments
+                  const gapPercent = 0.8;
+                  const segPercent = d.percentage - gapPercent;
+                  const strokeDashoffset = circ * (1 - segPercent / 100);
+                  const strokeWidth = hoveredDivisionIndex === idx ? 22 : 18;
+                  const startAngle = ((accumulatedAngle + gapPercent / 2) / 100) * 360 - 90;
                   accumulatedAngle += d.percentage;
                   
                   return (
@@ -578,10 +612,10 @@ export default function DashboardOverview() {
                       fill="none"
                       stroke={d.color}
                       strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
+                      strokeDasharray={circ}
                       strokeDashoffset={strokeDashoffset}
                       transform={`rotate(${startAngle} 100 100)`}
-                      strokeLinecap="butt"
+                      strokeLinecap="round"
                       className="transition-all duration-200 cursor-pointer"
                       onMouseEnter={() => setHoveredDivisionIndex(idx)}
                       onMouseLeave={() => setHoveredDivisionIndex(null)}
@@ -591,14 +625,11 @@ export default function DashboardOverview() {
 
                 {/* Total text in center */}
                 <g className="pointer-events-none">
-                  <text x="100" y="94" textAnchor="middle" className="text-[10px] fill-gray-400 font-semibold uppercase tracking-wider">
-                    {hoveredDivisionIndex !== null ? divisionsData[hoveredDivisionIndex].name : 'Total sales'}
+                  <text x="100" y="92" textAnchor="middle" dominantBaseline="middle" className="fill-gray-400" style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+                    TOTAL SALES
                   </text>
-                  <text x="100" y="116" textAnchor="middle" className="text-lg font-bold font-mono fill-gray-800">
-                    {hoveredDivisionIndex !== null 
-                      ? `${divisionsData[hoveredDivisionIndex].percentage.toFixed(0)}%` 
-                      : `$${(totalDivisionValue || 12000).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                    }
+                  <text x="100" y="112" textAnchor="middle" dominantBaseline="middle" className="fill-gray-900" style={{ fontSize: '20px', fontWeight: 600 }}>
+                    {totalDivisionValue === 0 ? '$12.0k' : `$${(totalDivisionValue / 1000).toFixed(1)}k`}
                   </text>
                 </g>
               </svg>
@@ -606,48 +637,52 @@ export default function DashboardOverview() {
           </div>
 
           {/* Division Legend */}
-          <div className="grid grid-cols-2 gap-2 mt-2 pt-3 border-t border-gray-50">
+          <ul className="mt-5 grid w-full grid-cols-2 gap-x-4 gap-y-2 text-sm">
             {divisionsData.map((d, idx) => (
-              <div 
+              <li 
                 key={idx} 
-                className={`flex flex-col p-1.5 rounded-lg border transition ${hoveredDivisionIndex === idx ? 'bg-sky-50/50 border-sky-100' : 'border-transparent'}`}
+                className="flex items-center gap-2"
                 onMouseEnter={() => setHoveredDivisionIndex(idx)}
                 onMouseLeave={() => setHoveredDivisionIndex(null)}
               >
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                  <span className="text-[10px] font-semibold text-gray-700 truncate">{d.name}</span>
-                </div>
-                <span className="text-xs font-bold font-mono text-gray-900 ml-3.5">
-                  ${d.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
+                <span className="min-w-0 flex-1 truncate text-gray-800">{d.name}</span>
+                <span className="text-gray-400 tabular-nums">
+                  {d.percentage.toFixed(0)}%
                 </span>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
 
       </div>
 
       {/* Row 3: Recent Orders & Side Panel (Low stock + Top Categories) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
         
         {/* Recent Orders (takes 2/3) */}
-        <div className="bg-white border border-gray-100 rounded-xl shadow-sm lg:col-span-2 flex flex-col justify-between">
-          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm lg:col-span-2 flex flex-col">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-gray-800">Recent Orders</h3>
-              <p className="text-[10px] text-gray-400">Latest sales transactions overview</p>
+              <h2 className="text-base font-semibold text-gray-900">Recent Orders</h2>
+              <p className="mt-0.5 text-xs text-gray-400">Latest sales transactions overview</p>
             </div>
-            <div className="text-[10px] font-semibold text-sky-600 bg-sky-50 px-2 py-0.5 rounded">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-sky-600">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
               Active Flow
             </div>
           </div>
 
           {recentOrders.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="p-3 rounded-full bg-sky-50 text-sky-500 mb-3"><Inbox size={20} /></div>
-              <p className="text-sm font-medium text-gray-700">No recent orders</p>
-              <p className="text-xs text-gray-400 mt-1">Orders will appear here once customers purchase products.</p>
+            <div className="flex min-h-[320px] flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-sky-50 text-sky-500">
+                <Inbox className="h-6 w-6" />
+              </div>
+              <p className="mt-5 text-sm font-semibold text-gray-700">No recent orders</p>
+              <p className="mt-1.5 max-w-xs text-xs text-gray-400">Orders will appear here once customers purchase products.</p>
             </div>
           ) : (
             <div className="overflow-x-auto flex-1">
@@ -702,9 +737,9 @@ export default function DashboardOverview() {
             </div>
           )}
           
-          <div className="px-5 py-3.5 border-t border-gray-50 bg-gray-50/30 flex justify-end">
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-600 hover:text-sky-700 transition cursor-pointer">
-              Go to Sales Module <ArrowRight size={12} />
+          <div className="px-5 py-3.5 border-t border-gray-100 flex justify-end">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:text-sky-700 hover:underline transition cursor-pointer">
+              Go to Sales Module <ArrowRight className="h-3 w-3" />
             </span>
           </div>
         </div>
@@ -713,68 +748,65 @@ export default function DashboardOverview() {
         <div className="flex flex-col gap-6 lg:col-span-1">
           
           {/* Top Categories */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm flex flex-col justify-between flex-1">
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm flex flex-col justify-between flex-1">
             <div>
-              <h3 className="text-sm font-bold text-gray-800">Top Categories</h3>
-              <p className="text-[10px] text-gray-400 mb-4">Highest revenue generated by segment</p>
+              <h2 className="text-base font-semibold text-gray-900">Top Categories</h2>
+              <p className="text-xs text-gray-400">Highest revenue generated by segment</p>
               
-              <div className="space-y-3">
-                {categorySales.map((cat, idx) => {
-                  const maxCatValue = categorySales[0]?.value || 1;
-                  const ratio = cat.value / maxCatValue;
-                  
-                  return (
-                    <div key={idx} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-gray-700">{cat.name}</span>
-                        <span className="font-bold text-gray-900 font-mono">
-                          ${cat.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 bg-gray-50 rounded-full overflow-hidden border border-gray-100">
-                        <div 
-                          className="h-full bg-sky-600 rounded-full transition-all duration-500" 
-                          style={{ width: `${ratio * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <ul className="mt-4 divide-y divide-gray-100">
+                {categorySales.map((cat, idx) => (
+                  <li key={idx} className="flex items-center justify-between py-3 text-sm">
+                    <span className="text-gray-800">{cat.name}</span>
+                    <span className="font-medium tabular-nums text-gray-800">
+                      ${cat.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-gray-50">
-              <div className="flex items-center justify-between text-[10px] font-semibold text-gray-400 uppercase">
-                <span>Core Segments</span>
-                <span className="text-sky-600 flex items-center gap-0.5"><Sparkles size={10} /> Live Data</span>
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em]">
+                <span className="text-gray-400">Core Segments</span>
+                <span className="text-sky-600 inline-flex items-center gap-1"><Activity className="h-3 w-3" /> Live Data</span>
               </div>
             </div>
           </div>
 
           {/* Low Stock Alerts */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm flex flex-col justify-between flex-1">
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm flex flex-col justify-between flex-1">
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-bold text-gray-800">Stock Alerts</h3>
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold text-gray-900">Stock Alerts</h2>
+                  <p className="mt-0.5 text-xs text-gray-400">Products with on-hand quantities below 10</p>
+                </div>
+                <span className="relative mt-1.5 flex h-2 w-2 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-60" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+                </span>
               </div>
-              <p className="text-[10px] text-gray-400 mb-4">Products with on-hand quantities below 10</p>
               
               {lowStockItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-center bg-emerald-50/30 border border-dashed border-emerald-100 rounded-lg">
-                  <span className="text-[10px] font-bold text-emerald-700">All levels normal</span>
-                  <span className="text-[9px] text-emerald-600 mt-0.5">No products require adjustment</span>
+                <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-6 text-center">
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
+                    <CheckCircle2 className="h-4 w-4" />
+                    All levels normal
+                  </div>
+                  <p className="mt-1.5 text-xs text-emerald-600">
+                    No products require adjustment
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2 mt-5">
                   {lowStockItems.map((item, idx) => (
                     <div 
                       key={idx} 
-                      className="flex items-center justify-between p-2 rounded-lg bg-rose-50/30 border border-rose-100/50 hover:bg-rose-50/50 transition"
+                      className="flex items-center justify-between p-2.5 rounded-lg bg-rose-50/30 border border-rose-100/50 hover:bg-rose-50/50 transition"
                     >
                       <div className="flex flex-col min-w-0 max-w-[70%]">
-                        <span className="text-xs font-semibold text-gray-800 truncate">{item.productName}</span>
-                        <span className="text-[9px] text-gray-400 font-mono">ID: {item.productId.slice(0, 8)}</span>
+                        <span className="text-sm font-medium text-gray-800 truncate">{item.productName}</span>
+                        <span className="text-[10px] text-gray-400 font-mono">ID: {item.productId.slice(0, 8)}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold font-mono text-rose-600">{item.onHandQty} qty</span>
@@ -788,10 +820,12 @@ export default function DashboardOverview() {
               )}
             </div>
 
-            <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between">
-              <span className="text-[9px] text-gray-400">Total Low Stock: {inventory.filter(i => i.onHandQty < 10).length} items</span>
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-600 hover:text-sky-700 transition cursor-pointer">
-                Adjust Stock <ArrowRight size={10} />
+            <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 text-xs">
+              <span className="min-w-0 truncate text-gray-400">
+                Total Low Stock: <span className="font-semibold text-gray-800">{inventory.filter(i => i.onHandQty < 10).length} items</span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1 font-medium text-sky-600 hover:underline transition cursor-pointer">
+                Adjust Stock <ArrowRight className="h-3 w-3" />
               </span>
             </div>
           </div>
