@@ -1,3 +1,4 @@
+import { SalesOrderStatus, PurchaseOrderStatus, ManufacturingStatus } from '@prisma/client';
 import { SalesRepository } from './sales.repository';
 import { CreateSalesOrderSchema } from './sales.types';
 import { prisma } from '../../config/prisma';
@@ -13,13 +14,23 @@ export class SalesService {
   }
 
   /**
-   * Create a new sales order in draft status with Zod validation.
+   * Check inventory and determine replenishment requirements (POs/MOs) before Sales Order creation.
    */
-  async create(data: unknown, companyId: string) {
+  async checkProcurement(data: unknown, companyId: string) {
     const parsed = CreateSalesOrderSchema.parse(data);
 
-    // Validate inventory availability
+    const autoManufacture: { productId: string; productName: string; quantity: number }[] = [];
+    const globalCompReq = new Map<string, { productName: string; qty: number }>();
+    const globalPurchaseReq = new Map<string, { productName: string; qty: number }>();
+
     for (const item of parsed.items) {
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId, companyId },
+      });
+      if (!product) {
+        throw new Error(`Product not found: ${item.productId}`);
+      }
+
       const inventory = await prisma.inventory.findUnique({
         where: { productId: item.productId },
       });
@@ -31,47 +42,203 @@ export class SalesService {
       const shortage = item.quantity - freeQty;
 
       if (shortage > 0) {
-        // Product has a shortage, check if it can be manufactured (has a BoM)
-        const bom = await prisma.boM.findFirst({
-          where: { productId: item.productId, companyId },
-          include: {
-            items: {
-              include: {
-                component: true,
+        if (product.procurementType === 'manufacture') {
+          // Check if it has a BoM
+          const bom = await prisma.boM.findFirst({
+            where: { productId: item.productId, companyId },
+            include: {
+              items: {
+                include: {
+                  component: true,
+                },
               },
             },
-          },
-        });
-
-        if (!bom) {
-          // If no recipe exists and we have a shortage, reject the order
-          const error = new Error('Insufficient items in inventory') as Error & { statusCode: number };
-          error.statusCode = 400;
-          throw error;
-        }
-
-        // Check if raw components are sufficient to manufacture the shortage quantity
-        for (const bomItem of bom.items) {
-          const requiredQty = shortage * bomItem.quantity;
-
-          const compInventory = await prisma.inventory.findUnique({
-            where: { productId: bomItem.componentId },
           });
 
-          const compOnHand = compInventory ? compInventory.onHandQty : 0;
-          const compReserved = compInventory ? compInventory.reservedQty : 0;
-          const compFreeQty = compOnHand - compReserved;
+          if (!bom || bom.items.length === 0) {
+            // No BoM exists, fallback to purchasing the product
+            const existing = globalPurchaseReq.get(item.productId) || { productName: product.name, qty: 0 };
+            existing.qty += shortage;
+            globalPurchaseReq.set(item.productId, existing);
+          } else {
+            // Accumulate component requirements globally
+            for (const bomItem of bom.items) {
+              const compId = bomItem.componentId;
+              const existing = globalCompReq.get(compId) || { productName: bomItem.component.name, qty: 0 };
+              existing.qty += shortage * bomItem.quantity;
+              globalCompReq.set(compId, existing);
+            }
 
-          if (compFreeQty < requiredQty) {
-            const error = new Error('Insufficient items in inventory') as Error & { statusCode: number };
-            error.statusCode = 400;
-            throw error;
+            autoManufacture.push({
+              productId: item.productId,
+              productName: product.name,
+              quantity: shortage,
+            });
           }
+        } else {
+          // Procurement type is purchase
+          const existing = globalPurchaseReq.get(item.productId) || { productName: product.name, qty: 0 };
+          existing.qty += shortage;
+          globalPurchaseReq.set(item.productId, existing);
         }
       }
     }
 
-    return this.repository.create(parsed, companyId);
+    const purchaseRequirements: {
+      productId: string;
+      productName: string;
+      shortageQty: number;
+      recommendedQty: number;
+    }[] = [];
+
+    // 1. Process direct purchase shortages
+    for (const [productId, val] of globalPurchaseReq.entries()) {
+      purchaseRequirements.push({
+        productId,
+        productName: val.productName,
+        shortageQty: val.qty,
+        recommendedQty: val.qty,
+      });
+    }
+
+    // 2. Process component shortages
+    for (const [compId, val] of globalCompReq.entries()) {
+      const compInventory = await prisma.inventory.findUnique({
+        where: { productId: compId },
+      });
+
+      const compOnHand = compInventory ? compInventory.onHandQty : 0;
+      const compReserved = compInventory ? compInventory.reservedQty : 0;
+      const compFreeQty = compOnHand - compReserved;
+
+      if (compFreeQty < val.qty) {
+        const compShortage = val.qty - compFreeQty;
+        purchaseRequirements.push({
+          productId: compId,
+          productName: val.productName,
+          shortageQty: compShortage,
+          recommendedQty: compShortage,
+        });
+      }
+    }
+
+    const available = purchaseRequirements.length === 0;
+
+    return {
+      available,
+      autoManufacture,
+      purchaseRequirements,
+    };
+  }
+
+  /**
+   * Create a new sales order in draft status along with auto-generated MOs and POs in a transaction.
+   */
+  async create(data: unknown, companyId: string) {
+    const parsed = CreateSalesOrderSchema.parse(data);
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Create the Sales Order
+      const order = await tx.salesOrder.create({
+        data: {
+          customerName: parsed.customerName,
+          status: SalesOrderStatus.draft,
+          companyId,
+        },
+      });
+
+      const itemsData = parsed.items.map((item) => ({
+        orderId: order.id,
+        productId: item.productId,
+        quantity: item.quantity,
+      }));
+
+      await tx.salesOrderItem.createMany({
+        data: itemsData,
+      });
+
+      // 2. Automatically trigger Manufacturing Orders for shortages of manufactured goods
+      for (const item of parsed.items) {
+        const product = await tx.product.findUnique({
+          where: { id: item.productId, companyId },
+        });
+        if (!product) {
+          throw new Error(`Product not found: ${item.productId}`);
+        }
+
+        const inventory = await tx.inventory.findUnique({
+          where: { productId: item.productId },
+        });
+
+        const onHand = inventory ? inventory.onHandQty : 0;
+        const reserved = inventory ? inventory.reservedQty : 0;
+        const freeQty = onHand - reserved;
+
+        const shortage = item.quantity - freeQty;
+
+        if (shortage > 0 && product.procurementType === 'manufacture') {
+          // Check if it has a BoM
+          const bom = await tx.boM.findFirst({
+            where: { productId: item.productId, companyId },
+          });
+
+          if (bom) {
+            await tx.manufacturingOrder.create({
+              data: {
+                productId: item.productId,
+                quantity: shortage,
+                status: ManufacturingStatus.draft,
+                companyId,
+              },
+            });
+          }
+        }
+      }
+
+      // 3. Create requested Purchase Orders if specified in procurement payload
+      if (parsed.procurement && parsed.procurement.purchaseOrders) {
+        for (const po of parsed.procurement.purchaseOrders) {
+          for (const poItem of po.items) {
+            await tx.inventory.upsert({
+              where: { productId: poItem.productId },
+              create: {
+                productId: poItem.productId,
+                companyId,
+                onHandQty: 0,
+                reservedQty: 0,
+              },
+              update: {},
+            });
+          }
+
+          await tx.purchaseOrder.create({
+            data: {
+              vendorName: po.vendorName,
+              status: PurchaseOrderStatus.draft,
+              companyId,
+              items: {
+                create: po.items.map((poItem) => ({
+                  productId: poItem.productId,
+                  quantity: poItem.quantity,
+                })),
+              },
+            },
+          });
+        }
+      }
+
+      // 4. Return the created sales order with its items
+      return tx.salesOrder.findUnique({
+        where: { id: order.id },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      });
+    });
   }
 
   /**
