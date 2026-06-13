@@ -74,6 +74,28 @@ enum Module {
 }
 
 //////////////////////////////////////////////////////
+// TENANT OWNER MODEL
+//////////////////////////////////////////////////////
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users               User[]
+  products            Product[]
+  inventories         Inventory[]
+  stockLedgers        StockLedger[]
+  salesOrders         SalesOrder[]
+  purchaseOrders      PurchaseOrder[]
+  boms                BoM[]
+  manufacturingOrders ManufacturingOrder[]
+  reservations        Reservation[]
+  roles               Role[]
+  auditLogs           AuditLog[]
+}
+
+//////////////////////////////////////////////////////
 // MODELS
 //////////////////////////////////////////////////////
 
@@ -85,6 +107,9 @@ model Product {
   procurementType ProcurementType
   procureOnDemand Boolean         @default(false)
   createdAt       DateTime        @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 
   inventory           Inventory?
   bom                 BoM?
@@ -103,6 +128,9 @@ model Inventory {
   onHandQty   Float    @default(0)
   reservedQty Float    @default(0)
   updatedAt   DateTime @updatedAt
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 }
 
 model StockLedger {
@@ -116,7 +144,10 @@ model StockLedger {
 
   createdAt DateTime @default(now())
 
-  @@index([productId])
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, productId])
 }
 
 model SalesOrder {
@@ -124,6 +155,9 @@ model SalesOrder {
   customerName String
   status       SalesOrderStatus
   createdAt    DateTime         @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 
   items SalesOrderItem[]
 }
@@ -145,6 +179,9 @@ model PurchaseOrder {
   status     PurchaseOrderStatus
   createdAt  DateTime            @default(now())
 
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
   items PurchaseOrderItem[]
 }
 
@@ -163,6 +200,9 @@ model BoM {
   id        String  @id @default(uuid())
   productId String  @unique
   product   Product @relation(fields: [productId], references: [id])
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 
   items BoMItem[]
 }
@@ -186,6 +226,9 @@ model ManufacturingOrder {
   quantity  Float
   status    ManufacturingStatus
   createdAt DateTime            @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 }
 
 model Reservation {
@@ -196,6 +239,9 @@ model Reservation {
   reservedQty Float
   sourceType  ReservationSourceType
   sourceId    String
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 }
 
 //////////////////////////////////////////////////////
@@ -208,15 +254,23 @@ model User {
   email    String @unique
   password String
 
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
   roles UserRole[]
 }
 
 model Role {
   id   String   @id @default(uuid())
-  name RoleType @unique
+  name RoleType
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 
   users       UserRole[]
   permissions RolePermission[]
+
+  @@unique([companyId, name])
 }
 
 model UserRole {
@@ -261,4 +315,7 @@ model AuditLog {
   oldValue   Json?
   newValue   Json?
   createdAt  DateTime @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 }
