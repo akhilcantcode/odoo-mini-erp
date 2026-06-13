@@ -30,6 +30,7 @@ import type { AuditLog } from '../features/audit/types';
 import type { ProcurementResult } from '../features/procurement/services';
 import type { DashboardStats } from '../features/dashboard/types';
 import type { SalesOrder } from '../features/sales/types';
+import DashboardOverview from '../features/dashboard/components/DashboardOverview';
 import {
   LayoutDashboard, Package, Warehouse, ShoppingCart, Factory, Zap, ScrollText,
   LogOut, Plus, ChevronRight, RefreshCw, Check, Truck, Play, CheckCircle2,
@@ -254,83 +255,7 @@ function AuthScreen({ onLogin }: { onLogin: () => void }) {
 
 // ─── Dashboard Tab ───
 function DashboardTab() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [s, l] = await Promise.all([getDashboardStats(), getAuditLogs()]);
-      setStats(s);
-      setLogs(l.slice(0, 8));
-    } catch {
-      /* swallow */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { refresh(); }, [refresh]);
-
-  const kpiCards = stats
-    ? [
-        { label: 'Sales Revenue', value: `$${stats.salesTotal.toLocaleString()}`, icon: <DollarSign size={20} />, color: 'from-sky-500 to-blue-600' },
-        { label: 'Inventory Value', value: `$${stats.inventoryValue.toLocaleString()}`, icon: <TrendingUp size={20} />, color: 'from-emerald-500 to-teal-600' },
-        { label: 'Active MOs', value: stats.manufacturingActiveCount.toString(), icon: <Activity size={20} />, color: 'from-amber-500 to-orange-600' },
-      ]
-    : [];
-
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Overview</h2>
-        <Btn variant="ghost" size="sm" onClick={refresh}><RefreshCw size={14} /> Refresh</Btn>
-      </div>
-      {loading ? (
-        <div className="flex items-center justify-center py-24"><RefreshCw size={20} className="animate-spin-slow text-sky-500" /></div>
-      ) : (
-        <>
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {kpiCards.map((k) => (
-              <div key={k.label} className="relative overflow-hidden rounded-xl bg-white border border-gray-100 shadow-sm p-5 group hover:shadow-md transition-shadow">
-                <div className={`absolute top-0 right-0 w-24 h-24 rounded-bl-[3rem] bg-gradient-to-br ${k.color} opacity-10 group-hover:opacity-15 transition-opacity`} />
-                <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br ${k.color} text-white mb-3`}>
-                  {k.icon}
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{k.value}</p>
-                <p className="text-xs text-gray-500 mt-1">{k.label}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Recent Activity */}
-          <Card>
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-800">Recent Activity</h3>
-            </div>
-            {logs.length === 0 ? (
-              <EmptyState icon={<ScrollText size={20} />} title="No activity yet" description="Actions will appear here as you use the system." />
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {logs.map((log) => (
-                  <div key={log.id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50/50 transition">
-                    <div>
-                      <p className="text-sm text-gray-800 font-medium">{log.action} <span className="text-gray-400">on</span> {log.entityType}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{new Date(log.createdAt).toLocaleString()}</p>
-                    </div>
-                    <span className="text-xs text-gray-400 font-mono">{log.entityId.slice(0, 8)}…</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </>
-      )}
-    </div>
-  );
+  return <DashboardOverview />;
 }
 
 // ─── Products Tab ───
