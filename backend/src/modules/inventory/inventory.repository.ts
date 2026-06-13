@@ -49,17 +49,26 @@ export class InventoryRepository {
    */
   async adjust(productId: string, changeQty: number, reference: string | undefined, companyId: string) {
     return prisma.$transaction(async (tx) => {
+      // Find existing inventory to calculate new absolute values safely
+      const existing = await tx.inventory.findUnique({
+        where: { productId },
+      });
+
+      const nextOnHand = Math.max(0, (existing?.onHandQty ?? 0) + changeQty);
+      const nextReserved = Math.min(existing?.reservedQty ?? 0, nextOnHand);
+
       // Update inventory
       const inventory = await tx.inventory.upsert({
         where: { productId },
         create: {
           productId,
           companyId,
-          onHandQty: changeQty,
-          reservedQty: 0,
+          onHandQty: nextOnHand,
+          reservedQty: nextReserved,
         },
         update: {
-          onHandQty: { increment: changeQty },
+          onHandQty: nextOnHand,
+          reservedQty: nextReserved,
         },
       });
 
