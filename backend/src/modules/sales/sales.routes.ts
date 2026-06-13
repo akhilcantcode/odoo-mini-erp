@@ -37,7 +37,7 @@ router.post(
 router.post(
   '/:id/deliver',
   authenticate,
-  requirePermission(Module.SALES, PermissionAction.UPDATE),
+  requirePermission(Module.INVENTORY, PermissionAction.UPDATE),
   controller.deliver
 );
 

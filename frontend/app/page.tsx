@@ -1104,6 +1104,10 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
   const [saving, setSaving] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
 
+  const { user } = useAuthStore();
+  const canConfirm = user?.roles?.some(r => r === 'SALES' || r === 'OWNER' || r === 'ADMIN');
+  const canDeliver = user?.roles?.some(r => r === 'INVENTORY' || r === 'OWNER' || r === 'ADMIN');
+
   const handleAction = async (id: string, action: 'confirm' | 'deliver') => {
     setActing(id);
     try {
@@ -1299,16 +1303,29 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
                     </td>
                     <td className="px-5 py-3 text-gray-400 text-xs">{new Date(o.createdAt).toLocaleDateString()}</td>
                     <td className="px-5 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-2 items-center">
                         {o.status === 'draft' && (
-                          <Btn variant="secondary" size="sm" onClick={() => handleAction(o.id, 'confirm')} disabled={acting === o.id}>
-                            Confirm
-                          </Btn>
+                          canConfirm ? (
+                            <Btn variant="secondary" size="sm" onClick={() => handleAction(o.id, 'confirm')} disabled={acting === o.id}>
+                              Confirm
+                            </Btn>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">Awaiting Confirmation</span>
+                          )
                         )}
                         {o.status === 'confirmed' && (
-                          <Btn variant="secondary" size="sm" onClick={() => handleAction(o.id, 'deliver')} disabled={acting === o.id}>
-                            Deliver
-                          </Btn>
+                          canDeliver ? (
+                            <Btn variant="secondary" size="sm" onClick={() => handleAction(o.id, 'deliver')} disabled={acting === o.id}>
+                              Deliver
+                            </Btn>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">Awaiting Delivery</span>
+                          )
+                        )}
+                        {o.status === 'delivered' && (
+                          <span className="text-xs text-emerald-500 font-medium flex items-center gap-1">
+                            <CheckCircle2 size={12} /> Delivered
+                          </span>
                         )}
                       </div>
                     </td>
