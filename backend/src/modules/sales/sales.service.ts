@@ -1,5 +1,6 @@
 import { SalesRepository } from './sales.repository';
 import { CreateSalesOrderSchema } from './sales.types';
+import { prisma } from '../../config/prisma';
 
 export class SalesService {
   private repository: SalesRepository;
@@ -13,6 +14,60 @@ export class SalesService {
    */
   async create(data: unknown, companyId: string) {
     const parsed = CreateSalesOrderSchema.parse(data);
+
+    // Validate inventory availability
+    for (const item of parsed.items) {
+      const inventory = await prisma.inventory.findUnique({
+        where: { productId: item.productId },
+      });
+
+      const onHand = inventory ? inventory.onHandQty : 0;
+      const reserved = inventory ? inventory.reservedQty : 0;
+      const freeQty = onHand - reserved;
+
+      const shortage = item.quantity - freeQty;
+
+      if (shortage > 0) {
+        // Product has a shortage, check if it can be manufactured (has a BoM)
+        const bom = await prisma.boM.findFirst({
+          where: { productId: item.productId, companyId },
+          include: {
+            items: {
+              include: {
+                component: true,
+              },
+            },
+          },
+        });
+
+        if (!bom) {
+          // If no recipe exists and we have a shortage, reject the order
+          const error = new Error('Insufficient items in inventory') as Error & { statusCode: number };
+          error.statusCode = 400;
+          throw error;
+        }
+
+        // Check if raw components are sufficient to manufacture the shortage quantity
+        for (const bomItem of bom.items) {
+          const requiredQty = shortage * bomItem.quantity;
+
+          const compInventory = await prisma.inventory.findUnique({
+            where: { productId: bomItem.componentId },
+          });
+
+          const compOnHand = compInventory ? compInventory.onHandQty : 0;
+          const compReserved = compInventory ? compInventory.reservedQty : 0;
+          const compFreeQty = compOnHand - compReserved;
+
+          if (compFreeQty < requiredQty) {
+            const error = new Error('Insufficient items in inventory') as Error & { statusCode: number };
+            error.statusCode = 400;
+            throw error;
+          }
+        }
+      }
+    }
+
     return this.repository.create(parsed, companyId);
   }
 

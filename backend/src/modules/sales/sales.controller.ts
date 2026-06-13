@@ -24,6 +24,9 @@ export class SalesController {
       if (err.name === 'ZodError') {
         return res.status(400).json({ message: 'Validation error', errors: err.errors });
       }
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
       next(err);
     }
   };

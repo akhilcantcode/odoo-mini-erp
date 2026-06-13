@@ -1218,7 +1218,7 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
         customerName: customer,
         items: draftItems.map(item => ({ productId: item.productId, quantity: item.quantity }))
       });
-      toast('Sales Order created successfully', 'success');
+      toast('Order placed', 'success');
       setShowForm(false);
       setCustomer('');
       setDraftItems([]);
