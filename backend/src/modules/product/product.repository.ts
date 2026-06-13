@@ -20,6 +20,15 @@ export class ProductRepository {
       where,
       include: {
         inventory: { select: { onHandQty: true, reservedQty: true } },
+        bom: {
+          include: {
+            items: {
+              include: {
+                component: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -33,6 +42,15 @@ export class ProductRepository {
       where: { id, companyId },
       include: {
         inventory: { select: { onHandQty: true, reservedQty: true } },
+        bom: {
+          include: {
+            items: {
+              include: {
+                component: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
       },
     });
   }

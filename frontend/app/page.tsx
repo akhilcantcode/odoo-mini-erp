@@ -40,11 +40,12 @@ import {
 } from 'lucide-react';
 
 // ─── Tabs ───
-type TabKey = 'dashboard' | 'products' | 'inventory' | 'purchases' | 'sales' | 'manufacturing' | 'procurement' | 'users' | 'audit';
+type TabKey = 'dashboard' | 'products' | 'bom' | 'inventory' | 'purchases' | 'sales' | 'manufacturing' | 'procurement' | 'users' | 'audit';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-  { key: 'products', label: 'Products & BoM', icon: <Package size={18} /> },
+  { key: 'products', label: 'Products', icon: <Package size={18} /> },
+  { key: 'bom', label: 'Bill of Materials', icon: <Settings2 size={18} /> },
   { key: 'inventory', label: 'Inventory', icon: <Warehouse size={18} /> },
   { key: 'purchases', label: 'Purchases', icon: <ShoppingCart size={18} /> },
   { key: 'sales', label: 'Sales Orders', icon: <ShoppingBag size={18} /> },
@@ -264,9 +265,6 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [bomProductId, setBomProductId] = useState<string | null>(null);
-  const [bomItems, setBomItems] = useState<BoMItem[]>([]);
-  const [bomLoading, setBomLoading] = useState(false);
   // Form state
   const [fName, setFName] = useState('');
   const [fSales, setFSales] = useState('');
@@ -274,9 +272,6 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
   const [fType, setFType] = useState<'purchase' | 'manufacture'>('purchase');
   const [fDemand, setFDemand] = useState(false);
   const [saving, setSaving] = useState(false);
-  // BoM set form
-  const [newBomCompId, setNewBomCompId] = useState('');
-  const [newBomQty, setNewBomQty] = useState('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -308,37 +303,10 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
     setSaving(false);
   };
 
-  const openBom = async (productId: string) => {
-    setBomProductId(productId);
-    setBomLoading(true);
-    try {
-      const bom = await getBom(productId);
-      setBomItems(bom?.items || []);
-    } catch {
-      setBomItems([]);
-    }
-    setBomLoading(false);
-  };
-
-  const handleSetBom = async () => {
-    if (!bomProductId || !newBomCompId || !newBomQty) return;
-    const existing = bomItems.map(i => ({ componentId: i.componentId, quantity: i.quantity }));
-    existing.push({ componentId: newBomCompId, quantity: parseInt(newBomQty) });
-    try {
-      const bom = await setBom(bomProductId, existing);
-      setBomItems(bom.items || []);
-      setNewBomCompId('');
-      setNewBomQty('');
-      toast('BoM updated', 'success');
-    } catch (err: unknown) {
-      toast(err instanceof Error ? err.message : 'Failed', 'error');
-    }
-  };
-
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Products & Bill of Materials</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Products</h2>
         <div className="flex gap-2">
           <Btn variant="ghost" size="sm" onClick={refresh}><RefreshCw size={14} /></Btn>
           <Btn size="sm" onClick={() => setShowForm(!showForm)}><Plus size={14} /> Add Product</Btn>
@@ -384,7 +352,6 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
                   <th className="px-5 py-3">Strategy</th>
                   <th className="px-5 py-3">MTO</th>
                   <th className="px-5 py-3">On Hand</th>
-                  <th className="px-5 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -396,10 +363,129 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
                     <td className="px-5 py-3"><StatusBadge status={p.procurementType} /></td>
                     <td className="px-5 py-3">{p.procureOnDemand ? <span className="text-sky-600 font-medium text-xs">Yes</span> : <span className="text-gray-400 text-xs">No</span>}</td>
                     <td className="px-5 py-3 text-gray-600">{p.inventory?.onHandQty ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Bill of Materials Tab ───
+function BomTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void }) {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [bomProductId, setBomProductId] = useState<string | null>(null);
+  const [bomItems, setBomItems] = useState<BoMItem[]>([]);
+  const [bomLoading, setBomLoading] = useState(false);
+  const [newBomCompId, setNewBomCompId] = useState('');
+  const [newBomQty, setNewBomQty] = useState('');
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try { setProducts(await getProducts()); } catch { /* swallow */ }
+    setLoading(false);
+  }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const openBom = async (productId: string) => {
+    setBomProductId(productId);
+    setBomLoading(true);
+    try {
+      const bom = await getBom(productId);
+      setBomItems(bom?.items || []);
+    } catch {
+      setBomItems([]);
+    }
+    setBomLoading(false);
+  };
+
+  const handleSetBom = async () => {
+    if (!bomProductId || !newBomCompId || !newBomQty) return;
+    const existing = bomItems.map(i => ({ componentId: i.componentId, quantity: i.quantity }));
+    existing.push({ componentId: newBomCompId, quantity: parseInt(newBomQty) });
+    try {
+      const bom = await setBom(bomProductId, existing);
+      setBomItems(bom.items || []);
+      setNewBomCompId('');
+      setNewBomQty('');
+      toast('BoM updated', 'success');
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed', 'error');
+    }
+  };
+
+  const handleClearBom = async (productId: string) => {
+    if (!confirm('Are you sure you want to clear this BoM?')) return;
+    try {
+      await setBom(productId, []);
+      toast('BoM cleared', 'success');
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed', 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900">Bills of Materials (BoM)</h2>
+        <Btn variant="ghost" size="sm" onClick={refresh}><RefreshCw size={14} /></Btn>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16"><RefreshCw size={20} className="animate-spin-slow text-sky-500" /></div>
+      ) : products.length === 0 ? (
+        <Card><EmptyState icon={<Settings2 size={20} />} title="No products found" description="Create products first to configure their Bill of Materials." /></Card>
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
+                  <th className="px-5 py-3">Finished Product</th>
+                  <th className="px-5 py-3">Strategy</th>
+                  <th className="px-5 py-3">Components / Ingredients</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {products.map((p) => (
+                  <tr key={p.id} className="hover:bg-sky-50/30 transition">
+                    <td className="px-5 py-3 font-medium text-gray-800">{p.name}</td>
                     <td className="px-5 py-3">
-                      <Btn variant="ghost" size="sm" onClick={() => openBom(p.id)}>
-                        <Settings2 size={13} /> BoM
-                      </Btn>
+                      <StatusBadge status={p.procurementType} />
+                    </td>
+                    <td className="px-5 py-3 text-gray-600">
+                      {p.bom && p.bom.items && p.bom.items.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {p.bom.items.map((item, idx) => (
+                            <span key={item.id || idx} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-100">
+                              {item.component?.name || 'Unknown'} (×{item.quantity})
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs italic">No components configured</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Btn variant="secondary" size="sm" onClick={() => openBom(p.id)}>
+                          <Settings2 size={13} /> Manage BoM
+                        </Btn>
+                        {p.bom && p.bom.items && p.bom.items.length > 0 && (
+                          <Btn variant="ghost" size="sm" onClick={() => handleClearBom(p.id)} className="text-red-500 hover:text-red-700">
+                            Clear
+                          </Btn>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -414,7 +500,7 @@ function ProductsTab({ toast }: { toast: (m: string, t: 'success' | 'error') => 
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={() => setBomProductId(null)}>
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-lg mx-4 animate-fade-in" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Bill of Materials</h3>
+              <h3 className="font-semibold text-gray-900">Configure Bill of Materials</h3>
               <button onClick={() => setBomProductId(null)} className="p-1 hover:bg-gray-100 rounded-lg cursor-pointer"><X size={16} /></button>
             </div>
             <div className="p-6 space-y-4">
@@ -1676,6 +1762,7 @@ export default function Home() {
     switch (activeTab) {
       case 'dashboard': return <DashboardTab />;
       case 'products': return <ProductsTab toast={showToast} />;
+      case 'bom': return <BomTab toast={showToast} />;
       case 'inventory': return <InventoryTab toast={showToast} />;
       case 'purchases': return <PurchasesTab toast={showToast} />;
       case 'sales': return <SalesTab toast={showToast} />;
