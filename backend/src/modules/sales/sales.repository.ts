@@ -228,12 +228,23 @@ export class SalesRepository {
 
         const reservedToRelease = reservation ? reservation.reservedQty : 0;
 
-        // Decrement onHandQty, and decrement reservedQty by the reserved amount
+        const inventory = await tx.inventory.findUnique({
+          where: { productId: item.productId },
+        });
+
+        const currentOnHand = inventory ? inventory.onHandQty : 0;
+        const currentReserved = inventory ? inventory.reservedQty : 0;
+
+        const nextOnHand = Math.max(0, currentOnHand - item.quantity);
+        const nextReserved = Math.max(0, currentReserved - reservedToRelease);
+        const finalReserved = Math.min(nextReserved, nextOnHand);
+
+        // Update onHandQty, and update reservedQty ensuring it doesn't exceed onHandQty
         await tx.inventory.update({
           where: { productId: item.productId },
           data: {
-            onHandQty: { decrement: item.quantity },
-            reservedQty: { decrement: reservedToRelease },
+            onHandQty: nextOnHand,
+            reservedQty: finalReserved,
           },
         });
 

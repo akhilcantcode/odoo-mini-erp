@@ -97,10 +97,16 @@ export class ManufacturingService {
           );
         }
 
-        // Decrement inventory
+        // Decrement inventory, and cap reservedQty at the new onHandQty
+        const nextOnHand = Math.max(0, (inventory?.onHandQty ?? 0) - requiredQty);
+        const nextReserved = Math.min(inventory?.reservedQty ?? 0, nextOnHand);
+
         await tx.inventory.update({
           where: { productId: bomItem.componentId },
-          data: { onHandQty: { decrement: requiredQty } },
+          data: {
+            onHandQty: nextOnHand,
+            reservedQty: nextReserved,
+          },
         });
 
         // Write stock ledger entry
