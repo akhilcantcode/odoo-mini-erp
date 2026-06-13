@@ -28,4 +28,6 @@ out/
 
 # Documentation Specs
 *.md
+!README.md
+
 
