@@ -1,7 +1,10 @@
-import { BaseEntity } from '../../../types';
-
-export interface AuditLog extends BaseEntity {
-  userId: string;
+export interface AuditLog {
+  id: string;
+  entityType: string;
+  entityId: string;
   action: string;
-  details: string;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  createdAt: string;
+  companyId: string;
 }

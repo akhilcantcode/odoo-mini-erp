@@ -1,8 +1,20 @@
-export interface PurchaseOrder {
-  id: string;
-  poNumber: string;
-  vendorId: string;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { z } from 'zod';
+
+// --- Zod Schemas ---
+
+export const CreatePurchaseOrderItemSchema = z.object({
+  productId: z.string().uuid('Invalid product ID'),
+  quantity: z.number().positive('Quantity must be positive'),
+});
+
+export const CreatePurchaseOrderSchema = z.object({
+  vendorName: z.string().min(1, 'Vendor name is required'),
+  items: z
+    .array(CreatePurchaseOrderItemSchema)
+    .min(1, 'At least one item is required'),
+});
+
+// --- Inferred Types ---
+
+export type CreatePurchaseOrderInput = z.infer<typeof CreatePurchaseOrderSchema>;
+export type CreatePurchaseOrderItemInput = z.infer<typeof CreatePurchaseOrderItemSchema>;

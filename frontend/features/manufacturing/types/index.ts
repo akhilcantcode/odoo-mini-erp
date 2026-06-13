@@ -4,5 +4,10 @@ export interface ManufacturingOrder extends BaseEntity {
   moNumber: string;
   productId: string;
   qtyToProduce: number;
-  status: string;
+  status: 'draft' | 'confirmed' | 'in_progress' | 'done';
+  companyId: string;
+  product?: {
+    id: string;
+    name: string;
+  };
 }

@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { AuditController } from './audit.controller';
+import { authenticate, requirePermission } from '../auth/auth.middleware';
+import { Module, PermissionAction } from '@prisma/client';
 
 const router = Router();
 const controller = new AuditController();
 
-// Audit routes will be defined here
+router.get('/', authenticate, requirePermission(Module.AUDIT, PermissionAction.READ), controller.list);
 
 export { router as auditRouter };

@@ -7,5 +7,10 @@ export class DashboardService {
     this.repository = new DashboardRepository();
   }
 
-  // Dashboard analytics logic (aggregating metrics) will be implemented here
+  /**
+   * Get aggregated dashboard statistics.
+   */
+  async getStats(companyId: string) {
+    return this.repository.getStats(companyId);
+  }
 }
