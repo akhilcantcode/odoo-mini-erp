@@ -1,6 +1,11 @@
 import { prisma } from './config/prisma';
 import { SalesOrderStatus, PurchaseOrderStatus, ManufacturingStatus, ProcurementType } from '@prisma/client';
 
+let salesOrderCounter = 1;
+let purchaseOrderCounter = 1;
+let manufacturingOrderCounter = 1;
+let bomCounter = 1;
+
 async function seedCompanyData(companyId: string, companyName: string) {
   console.log(`Seeding data for company: ${companyName} (${companyId})...`);
 
@@ -94,7 +99,11 @@ async function seedCompanyData(companyId: string, companyName: string) {
 
     if (!existingBom) {
       const bom = await prisma.boM.create({
-        data: { productId: desk.id, companyId }
+        data: {
+          id: `BOM-${String(bomCounter++).padStart(4, '0')}`,
+          productId: desk.id,
+          companyId
+        }
       });
 
       await prisma.boMItem.createMany({
@@ -113,7 +122,11 @@ async function seedCompanyData(companyId: string, companyName: string) {
 
     if (!existingBom) {
       const bom = await prisma.boM.create({
-        data: { productId: chair.id, companyId }
+        data: {
+          id: `BOM-${String(bomCounter++).padStart(4, '0')}`,
+          productId: chair.id,
+          companyId
+        }
       });
 
       await prisma.boMItem.createMany({
@@ -176,6 +189,7 @@ async function seedCompanyData(companyId: string, companyName: string) {
     if (!existingOrder) {
       const order = await prisma.salesOrder.create({
         data: {
+          id: `SO-${String(salesOrderCounter++).padStart(5, '0')}`,
           customerName: o.customerName,
           status: o.status,
           companyId
@@ -223,6 +237,7 @@ async function seedCompanyData(companyId: string, companyName: string) {
     if (!existingPo) {
       const order = await prisma.purchaseOrder.create({
         data: {
+          id: `PO-${String(purchaseOrderCounter++).padStart(5, '0')}`,
           vendorName: po.vendorName,
           status: po.status,
           companyId
@@ -261,6 +276,7 @@ async function seedCompanyData(companyId: string, companyName: string) {
     if (!existingMo) {
       await prisma.manufacturingOrder.create({
         data: {
+          id: `MO-${String(manufacturingOrderCounter++).padStart(4, '0')}`,
           productId: prod.id,
           quantity: mo.qty,
           status: mo.status,

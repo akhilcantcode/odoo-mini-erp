@@ -8,8 +8,26 @@ export class SalesRepository {
    */
   async create(data: CreateSalesOrderInput, companyId: string) {
     return prisma.$transaction(async (tx) => {
+      // Get next SO sequence ID
+      const lastOrder = await tx.salesOrder.findFirst({
+        where: { id: { startsWith: 'SO-' } },
+        orderBy: { id: 'desc' },
+      });
+
+      let nextId = 'SO-00001';
+      if (lastOrder) {
+        const parts = lastOrder.id.split('-');
+        if (parts.length === 2) {
+          const lastNum = parseInt(parts[1], 10);
+          if (!isNaN(lastNum)) {
+            nextId = `SO-${String(lastNum + 1).padStart(5, '0')}`;
+          }
+        }
+      }
+
       const order = await tx.salesOrder.create({
         data: {
+          id: nextId,
           customerName: data.customerName,
           status: SalesOrderStatus.draft,
           companyId,

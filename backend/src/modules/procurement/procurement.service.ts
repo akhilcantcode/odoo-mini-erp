@@ -1,15 +1,21 @@
-import { prisma } from '../../config/prisma';
+
 import { ProcurementRepository } from './procurement.repository';
 import { ProcurementRunResult } from './procurement.types';
 import { PurchaseOrderStatus, ManufacturingStatus } from '@prisma/client';
+import { PurchaseRepository } from '../purchase/purchase.repository';
+import { ManufacturingRepository } from '../manufacturing/manufacturing.repository';
 
 const AUTO_VENDOR_NAME = 'Automatic Replenishment Vendor';
 
 export class ProcurementService {
   private repository: ProcurementRepository;
+  private purchaseRepository: PurchaseRepository;
+  private manufacturingRepository: ManufacturingRepository;
 
   constructor() {
     this.repository = new ProcurementRepository();
+    this.purchaseRepository = new PurchaseRepository();
+    this.manufacturingRepository = new ManufacturingRepository();
   }
 
   /**
@@ -43,22 +49,10 @@ export class ProcurementService {
 
     // Create a single PO for all purchase shortfalls
     if (purchaseItems.length > 0) {
-      const po = await prisma.purchaseOrder.create({
-        data: {
-          vendorName: AUTO_VENDOR_NAME,
-          status: PurchaseOrderStatus.draft,
-          companyId,
-          items: {
-            create: purchaseItems.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-            })),
-          },
-        },
-        include: {
-          items: { select: { productId: true, quantity: true } },
-        },
-      });
+      const po = await this.purchaseRepository.create({
+        vendorName: AUTO_VENDOR_NAME,
+        items: purchaseItems,
+      }, companyId);
 
       triggeredPurchaseOrders.push({
         id: po.id,
@@ -69,14 +63,10 @@ export class ProcurementService {
 
     // Create individual MOs for each manufacture shortfall
     for (const item of manufactureItems) {
-      const mo = await prisma.manufacturingOrder.create({
-        data: {
-          productId: item.productId,
-          quantity: item.quantity,
-          status: ManufacturingStatus.draft,
-          companyId,
-        },
-      });
+      const mo = await this.manufacturingRepository.create({
+        productId: item.productId,
+        quantity: item.quantity,
+      }, companyId);
 
       triggeredManufacturingOrders.push({
         id: mo.id,
