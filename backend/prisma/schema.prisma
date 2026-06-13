@@ -91,6 +91,7 @@ model Company {
   salesOrders             SalesOrder[]
   purchaseOrders          PurchaseOrder[]
   boms                    BoM[]
+  bomOperations           BoMOperation[]
   manufacturingOrders     ManufacturingOrder[]
   reservations            Reservation[]
   roles                   Role[]
@@ -217,8 +218,22 @@ model BoM {
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
 
+  quantity            Float                  @default(1.0)
+  reference           String?
   items               BoMItem[]
+  operations          BoMOperation[]
   manufacturingOrders ManufacturingOrder[]
+}
+
+model BoMOperation {
+  id              String  @id @default(uuid())
+  bomId           String
+  bom             BoM     @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  operationName   String
+  workCenterName  String
+  plannedDuration Float
+  companyId       String
+  company         Company @relation(fields: [companyId], references: [id])
 }
 
 model BoMItem {

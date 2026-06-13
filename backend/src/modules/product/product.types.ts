@@ -23,10 +23,17 @@ export const SetBomItemSchema = z.object({
   quantity: z.number().positive('Quantity must be positive'),
 });
 
+export const SetBomOperationSchema = z.object({
+  operationName: z.string().min(1, 'Operation name is required'),
+  workCenterName: z.string().min(1, 'Work center name is required'),
+  plannedDuration: z.number().nonnegative('Duration must be positive'),
+});
+
 export const SetBomSchema = z.object({
-  items: z
-    .array(SetBomItemSchema)
-    .min(1, 'At least one BoM item is required'),
+  quantity: z.number().positive('Quantity must be positive').optional().default(1.0),
+  reference: z.string().max(8, 'Reference must be at most 8 characters').nullable().optional(),
+  items: z.array(SetBomItemSchema),
+  operations: z.array(SetBomOperationSchema).optional().default([]),
 });
 
 // --- Inferred Types ---

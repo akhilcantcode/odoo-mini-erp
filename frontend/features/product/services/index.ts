@@ -55,11 +55,16 @@ export async function getBom(productId: string): Promise<BoM> {
 
 export async function setBom(
   productId: string,
-  items: { componentId: string; quantity: number }[]
+  data: {
+    quantity: number;
+    reference?: string | null;
+    items: { componentId: string; quantity: number }[];
+    operations?: { operationName: string; workCenterName: string; plannedDuration: number }[];
+  }
 ): Promise<BoM> {
   return fetchApi(`/products/${productId}/bom`, {
     method: 'POST',
-    body: JSON.stringify({ items }),
+    body: JSON.stringify(data),
   });
 }
 

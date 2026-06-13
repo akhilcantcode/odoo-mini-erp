@@ -25,10 +25,21 @@ export interface BoMItem {
   };
 }
 
+export interface BoMOperation {
+  id: string;
+  bomId: string;
+  operationName: string;
+  workCenterName: string;
+  plannedDuration: number;
+}
+
 export interface BoM {
   id: string;
   productId: string;
   companyId: string;
+  quantity: number;
+  reference: string | null;
   items: BoMItem[];
+  operations?: BoMOperation[];
 }
 

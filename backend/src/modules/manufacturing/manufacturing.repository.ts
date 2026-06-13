@@ -63,6 +63,17 @@ export class ManufacturingRepository {
         }
       }
 
+      // Find the BoM to use (explicit bomId, or default for product)
+      const bom = data.bomId
+        ? await tx.boM.findFirst({
+            where: { id: data.bomId, companyId },
+            include: { items: true, operations: true },
+          })
+        : await tx.boM.findFirst({
+            where: { productId: data.productId, companyId },
+            include: { items: true, operations: true },
+          });
+
       // 1. Fetch default BoM items if no custom components (items) are provided
       let itemsToCreate: { productId: string; toConsumeQty: number; companyId: string }[] = [];
       if (data.items && data.items.length > 0) {
@@ -71,18 +82,12 @@ export class ManufacturingRepository {
           toConsumeQty: item.quantity,
           companyId,
         }));
-      } else {
-        const bom = await tx.boM.findFirst({
-          where: { productId: data.productId, companyId },
-          include: { items: true },
-        });
-        if (bom && bom.items) {
-          itemsToCreate = bom.items.map(item => ({
-            productId: item.componentId,
-            toConsumeQty: item.quantity * data.quantity,
-            companyId,
-          }));
-        }
+      } else if (bom && bom.items) {
+        itemsToCreate = bom.items.map(item => ({
+          productId: item.componentId,
+          toConsumeQty: item.quantity * (data.quantity / bom.quantity),
+          companyId,
+        }));
       }
 
       // 2. Fetch default work orders if no custom workOrders are provided
@@ -92,6 +97,13 @@ export class ManufacturingRepository {
           operationName: wo.operationName,
           workCenterName: wo.workCenterName,
           plannedDuration: wo.plannedDuration,
+          companyId,
+        }));
+      } else if (bom && bom.operations && bom.operations.length > 0) {
+        workOrdersToCreate = bom.operations.map(op => ({
+          operationName: op.operationName,
+          workCenterName: op.workCenterName,
+          plannedDuration: op.plannedDuration,
           companyId,
         }));
       } else {
@@ -113,7 +125,7 @@ export class ManufacturingRepository {
           companyId,
           scheduleDate: data.scheduleDate ? new Date(data.scheduleDate) : null,
           assigneeId: data.assigneeId,
-          bomId: data.bomId,
+          bomId: data.bomId || bom?.id || null,
           items: {
             create: itemsToCreate,
           },

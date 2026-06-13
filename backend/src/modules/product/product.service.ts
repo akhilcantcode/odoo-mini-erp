@@ -1,11 +1,14 @@
 import { ProductRepository } from './product.repository';
 import { CreateProductSchema, UpdateProductSchema, SetBomSchema } from './product.types';
+import { AuditService } from '../audit/audit.service';
 
 export class ProductService {
   private repository: ProductRepository;
+  private auditService: AuditService;
 
   constructor() {
     this.repository = new ProductRepository();
+    this.auditService = new AuditService();
   }
 
   /**
@@ -76,6 +79,22 @@ export class ProductService {
       throw error;
     }
     const parsed = SetBomSchema.parse(data);
-    return this.repository.setBom(productId, parsed.items, companyId);
+    const result = await this.repository.setBom(productId, parsed, companyId);
+
+    if (!result) {
+      throw new Error('Failed to set Bill of Materials');
+    }
+
+    // Log the audit event
+    await this.auditService.log(
+      'BoM',
+      result.id,
+      'SET',
+      null,
+      { productId: result.productId, itemsCount: parsed.items.length },
+      companyId
+    );
+
+    return result;
   }
 }

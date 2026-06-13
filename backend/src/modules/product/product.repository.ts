@@ -27,6 +27,7 @@ export class ProductRepository {
                 component: { select: { id: true, name: true } },
               },
             },
+            operations: true,
           },
         },
       },
@@ -49,6 +50,7 @@ export class ProductRepository {
                 component: { select: { id: true, name: true } },
               },
             },
+            operations: true,
           },
         },
       },
@@ -63,20 +65,21 @@ export class ProductRepository {
       const product = await tx.product.create({
         data: {
           name: data.name,
-          salesPrice: data.salesPrice ?? null,
-          costPrice: data.costPrice ?? null,
-          procurementType: data.procurementType as ProcurementType,
-          procureOnDemand: data.procureOnDemand ?? false,
+          salesPrice: data.salesPrice,
+          costPrice: data.costPrice,
+          procurementType: data.procurementType,
+          procureOnDemand: data.procureOnDemand,
           companyId,
         },
       });
 
+      // Create initial empty inventory
       await tx.inventory.create({
         data: {
           productId: product.id,
-          companyId,
           onHandQty: 0,
           reservedQty: 0,
+          companyId,
         },
       });
 
@@ -85,18 +88,16 @@ export class ProductRepository {
   }
 
   /**
-   * Update product fields.
+   * Update a product.
    */
   async update(id: string, data: UpdateProductInput, companyId: string) {
     return prisma.product.update({
-      where: { id, companyId },
+      where: { id },
       data: {
-        ...(data.name !== undefined && { name: data.name }),
+        ...(data.name && { name: data.name }),
         ...(data.salesPrice !== undefined && { salesPrice: data.salesPrice }),
         ...(data.costPrice !== undefined && { costPrice: data.costPrice }),
-        ...(data.procurementType !== undefined && {
-          procurementType: data.procurementType as ProcurementType,
-        }),
+        ...(data.procurementType && { procurementType: data.procurementType }),
         ...(data.procureOnDemand !== undefined && { procureOnDemand: data.procureOnDemand }),
       },
     });
@@ -114,6 +115,7 @@ export class ProductRepository {
             component: { select: { id: true, name: true, costPrice: true } },
           },
         },
+        operations: true,
       },
     });
   }
@@ -122,7 +124,17 @@ export class ProductRepository {
    * Set (create or replace) BoM for a product.
    * Deletes existing items and replaces them in a transaction.
    */
-  async setBom(productId: string, items: { componentId: string; quantity: number }[], companyId: string) {
+  async setBom(
+    productId: string,
+    data: {
+      quantity: number;
+      reference?: string | null;
+      items: { componentId: string; quantity: number }[];
+      operations?: { operationName: string; workCenterName: string; plannedDuration: number }[];
+    },
+    companyId: string
+  ) {
+    const { quantity, reference, items, operations = [] } = data;
     return prisma.$transaction(async (tx) => {
       // Check if a BoM already exists for this product
       const existingBom = await tx.boM.findFirst({
@@ -130,19 +142,48 @@ export class ProductRepository {
       });
 
       if (existingBom) {
+        // Update BoM quantity and reference
+        await tx.boM.update({
+          where: { id: existingBom.id },
+          data: {
+            quantity,
+            reference: reference || null,
+          },
+        });
+
         // Delete existing items
         await tx.boMItem.deleteMany({
           where: { bomId: existingBom.id },
         });
 
-        // Create new items
-        await tx.boMItem.createMany({
-          data: items.map((item) => ({
-            bomId: existingBom.id,
-            componentId: item.componentId,
-            quantity: item.quantity,
-          })),
+        // Delete existing operations
+        await tx.boMOperation.deleteMany({
+          where: { bomId: existingBom.id },
         });
+
+        // Create new items
+        if (items.length > 0) {
+          await tx.boMItem.createMany({
+            data: items.map((item) => ({
+              bomId: existingBom.id,
+              componentId: item.componentId,
+              quantity: item.quantity,
+            })),
+          });
+        }
+
+        // Create new operations
+        if (operations.length > 0) {
+          await tx.boMOperation.createMany({
+            data: operations.map((op) => ({
+              bomId: existingBom.id,
+              operationName: op.operationName,
+              workCenterName: op.workCenterName,
+              plannedDuration: op.plannedDuration,
+              companyId,
+            })),
+          });
+        }
 
         // Return updated BoM
         return tx.boM.findFirst({
@@ -153,6 +194,7 @@ export class ProductRepository {
                 component: { select: { id: true, name: true, costPrice: true } },
               },
             },
+            operations: true,
           },
         });
       } else {
@@ -173,16 +215,26 @@ export class ProductRepository {
           }
         }
 
-        // Create new BoM with items
+        // Create new BoM with items and operations
         return tx.boM.create({
           data: {
             id: nextId,
             productId,
             companyId,
+            quantity,
+            reference: reference || null,
             items: {
               create: items.map((item) => ({
                 componentId: item.componentId,
                 quantity: item.quantity,
+              })),
+            },
+            operations: {
+              create: operations.map((op) => ({
+                operationName: op.operationName,
+                workCenterName: op.workCenterName,
+                plannedDuration: op.plannedDuration,
+                companyId,
               })),
             },
           },
@@ -192,6 +244,7 @@ export class ProductRepository {
                 component: { select: { id: true, name: true, costPrice: true } },
               },
             },
+            operations: true,
           },
         });
       }
