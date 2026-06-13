@@ -11,52 +11,6 @@ Welcome to the **Mini ERP** codebase! This system is a production-grade Demand-t
 
 ---
 
-## 👥 Team Work Division
-
-We have divided the team into two streams of 2 developers (1 Frontend + 1 Backend) to prevent blockers and minimize merge conflicts.
-
-```
-                  ┌────────────────────────────────────────┐
-                  │              STREAM A                  │
-                  │   Demand, Products & Foundations      │
-                  │   Backend (B1)  <───>  Frontend (F1)   │
-                  └───────────────────┬────────────────────┘
-                                      │
-                                      ▼
-                  ┌────────────────────────────────────────┐
-                  │              STREAM B                  │
-                  │   Supply, Manufacturing & Automation  │
-                  │   Backend (B2)  <───>  Frontend (F2)   │
-                  └────────────────────────────────────────┘
-```
-
-### Stream A: Foundations & Demand
-* **Developer B1 (Backend)**:
-  * Authentication, JWT sessions, and RBAC middlewares (`/api/auth`).
-  * Product catalog CRUD (`/api/products`).
-  * Sales Orders (`/api/sales`).
-  * Inventory Reservations & Deliveries.
-* **Developer F1 (Frontend)**:
-  * Global Layout UI (Sidebar, Navbar shell).
-  * Auth pages & Session storage (Zustand state integration).
-  * Product catalog lists, forms, and BoM editing screens.
-  * Sales Orders Dashboard (Drafting, confirmation, delivery action workflows).
-
-### Stream B: Supply & Production
-* **Developer B2 (Backend)**:
-  * Purchase Orders & Incoming Goods Receiving (`/api/purchase`).
-  * Bill of Materials (BoMs) configuration.
-  * Manufacturing Orders (MO start component consumption & MO finish production).
-  * Procurement MTO/MTS automated engine (`/api/procurement/run`).
-  * Audit logs logging middleware & Dashboard stats.
-* **Developer F2 (Frontend)**:
-  * Inventory levels Grid (On Hand, Reserved, Free quantities) & Stock Ledger logs view.
-  * Purchase Orders Dashboard (Drafting, confirming, receiving goods).
-  * Manufacturing console (Viewing checklist, starting MOs, completing MOs).
-  * Admin / Business Dashboard charts & Audit trail lookup UI.
-
----
-
 ## 🛠️ Step-by-Step Developer Setup
 
 ### Step 1: Clone & Configure Database
