@@ -22,7 +22,7 @@ import { getManufacturingOrders, createManufacturingOrder, startManufacturingOrd
 import { runProcurement } from '../features/procurement/services';
 import { getAuditLogs } from '../features/audit/services';
 import { getDashboardStats } from '../features/dashboard/services';
-import { getSalesOrders, createSalesOrder } from '../features/sales/services';
+import { getSalesOrders, createSalesOrder, confirmSalesOrder, deliverSalesOrder } from '../features/sales/services';
 import type { Product, BoMItem } from '../features/product/types';
 import type { InventoryItem, StockLedgerEntry } from '../features/inventory/types';
 import type { PurchaseOrder } from '../features/purchase/types';
@@ -1102,6 +1102,24 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
   const [quantity, setQuantity] = useState('');
   const [draftItems, setDraftItems] = useState<{ productId: string; name: string; quantity: number }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [acting, setActing] = useState<string | null>(null);
+
+  const handleAction = async (id: string, action: 'confirm' | 'deliver') => {
+    setActing(id);
+    try {
+      if (action === 'confirm') {
+        await confirmSalesOrder(id);
+        toast('Sales Order confirmed', 'success');
+      } else if (action === 'deliver') {
+        await deliverSalesOrder(id);
+        toast('Sales Order delivered', 'success');
+      }
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : `Failed to ${action} sales order`, 'error');
+    }
+    setActing(null);
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -1261,6 +1279,7 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Items</th>
                   <th className="px-5 py-3">Created</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -1279,6 +1298,20 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
                       </div>
                     </td>
                     <td className="px-5 py-3 text-gray-400 text-xs">{new Date(o.createdAt).toLocaleDateString()}</td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        {o.status === 'draft' && (
+                          <Btn variant="secondary" size="sm" onClick={() => handleAction(o.id, 'confirm')} disabled={acting === o.id}>
+                            Confirm
+                          </Btn>
+                        )}
+                        {o.status === 'confirmed' && (
+                          <Btn variant="secondary" size="sm" onClick={() => handleAction(o.id, 'deliver')} disabled={acting === o.id}>
+                            Deliver
+                          </Btn>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

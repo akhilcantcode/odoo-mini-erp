@@ -1,6 +1,6 @@
 import { prisma } from '../../config/prisma';
 import { CreateSalesOrderInput } from './sales.types';
-import { SalesOrderStatus } from '@prisma/client';
+import { SalesOrderStatus, ReservationSourceType, StockMovementType } from '@prisma/client';
 
 export class SalesRepository {
   /**
@@ -69,6 +69,166 @@ export class SalesRepository {
           },
         },
       },
+    });
+  }
+
+  /**
+   * Confirm a draft sales order, reserving available stock.
+   */
+  async confirm(id: string, companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findFirst({
+        where: { id, companyId },
+        include: { items: { include: { product: true } } },
+      });
+
+      if (!order) {
+        throw new Error('Sales order not found');
+      }
+
+      if (order.status !== SalesOrderStatus.draft) {
+        throw new Error('Only draft sales orders can be confirmed');
+      }
+
+      // For each item, check inventory and reserve
+      for (const item of order.items) {
+        // Upsert inventory just in case it doesn't exist
+        const inventory = await tx.inventory.upsert({
+          where: { productId: item.productId },
+          create: {
+            productId: item.productId,
+            companyId,
+            onHandQty: 0,
+            reservedQty: 0,
+          },
+          update: {},
+        });
+
+        const freeQty = inventory.onHandQty - inventory.reservedQty;
+        const toReserve = Math.min(item.quantity, Math.max(0, freeQty));
+
+        if (toReserve > 0) {
+          await tx.inventory.update({
+            where: { productId: item.productId },
+            data: {
+              reservedQty: { increment: toReserve },
+            },
+          });
+
+          await tx.reservation.create({
+            data: {
+              productId: item.productId,
+              reservedQty: toReserve,
+              sourceType: ReservationSourceType.sales,
+              sourceId: order.id,
+              companyId,
+            },
+          });
+        }
+      }
+
+      // Update Sales Order status to confirmed
+      const updatedOrder = await tx.salesOrder.update({
+        where: { id },
+        data: { status: SalesOrderStatus.confirmed },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      });
+
+      return updatedOrder;
+    });
+  }
+
+  /**
+   * Deliver a confirmed or partial sales order, reducing inventory and recording stock ledger entries.
+   */
+  async deliver(id: string, companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findFirst({
+        where: { id, companyId },
+        include: { items: { include: { product: true } } },
+      });
+
+      if (!order) {
+        throw new Error('Sales order not found');
+      }
+
+      if (order.status !== SalesOrderStatus.confirmed && order.status !== SalesOrderStatus.partial) {
+        throw new Error('Only confirmed or partial sales orders can be delivered');
+      }
+
+      // First check that we have enough stock on hand for all items to perform delivery
+      for (const item of order.items) {
+        const inventory = await tx.inventory.findUnique({
+          where: { productId: item.productId },
+        });
+
+        const onHand = inventory ? inventory.onHandQty : 0;
+        if (onHand < item.quantity) {
+          throw new Error(`Insufficient stock to deliver product "${item.product.name}": need ${item.quantity}, have ${onHand}`);
+        }
+      }
+
+      // Process delivery
+      for (const item of order.items) {
+        // Find if we have a reservation for this item & sales order
+        const reservation = await tx.reservation.findFirst({
+          where: {
+            sourceId: order.id,
+            productId: item.productId,
+            sourceType: ReservationSourceType.sales,
+          },
+        });
+
+        const reservedToRelease = reservation ? reservation.reservedQty : 0;
+
+        // Decrement onHandQty, and decrement reservedQty by the reserved amount
+        await tx.inventory.update({
+          where: { productId: item.productId },
+          data: {
+            onHandQty: { decrement: item.quantity },
+            reservedQty: { decrement: reservedToRelease },
+          },
+        });
+
+        // Delete the reservation record if it exists
+        if (reservation) {
+          await tx.reservation.delete({
+            where: { id: reservation.id },
+          });
+        }
+
+        // Create a SALE type StockLedger entry
+        await tx.stockLedger.create({
+          data: {
+            productId: item.productId,
+            changeQty: -item.quantity,
+            type: StockMovementType.SALE,
+            referenceId: order.id,
+            companyId,
+          },
+        });
+      }
+
+      // Update Sales Order status to delivered
+      const updatedOrder = await tx.salesOrder.update({
+        where: { id },
+        data: { status: SalesOrderStatus.delivered },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      });
+
+      return updatedOrder;
     });
   }
 }

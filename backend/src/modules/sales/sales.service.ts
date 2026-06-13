@@ -1,12 +1,15 @@
 import { SalesRepository } from './sales.repository';
 import { CreateSalesOrderSchema } from './sales.types';
 import { prisma } from '../../config/prisma';
+import { AuditService } from '../audit/audit.service';
 
 export class SalesService {
   private repository: SalesRepository;
+  private auditService: AuditService;
 
   constructor() {
     this.repository = new SalesRepository();
+    this.auditService = new AuditService();
   }
 
   /**
@@ -89,5 +92,38 @@ export class SalesService {
       throw error;
     }
     return order;
+  }
+
+  /**
+   * Confirm a draft sales order.
+   */
+  async confirm(id: string, companyId: string) {
+    const updated = await this.repository.confirm(id, companyId);
+    await this.auditService.log(
+      'SalesOrder',
+      id,
+      'CONFIRM',
+      { status: 'draft' },
+      { status: 'confirmed' },
+      companyId
+    );
+    return updated;
+  }
+
+  /**
+   * Deliver a confirmed sales order.
+   */
+  async deliver(id: string, companyId: string) {
+    const order = await this.getById(id, companyId);
+    const updated = await this.repository.deliver(id, companyId);
+    await this.auditService.log(
+      'SalesOrder',
+      id,
+      'DELIVER',
+      { status: order.status },
+      { status: 'delivered' },
+      companyId
+    );
+    return updated;
   }
 }
