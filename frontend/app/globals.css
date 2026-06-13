@@ -1,35 +1,130 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #6D28D9;
-  --color-secondary: #9333EA;
-  --color-success: #22C55E;
-  --color-warning: #F59E0B;
-  --color-danger: #EF4444;
-  --color-sidebar: #111827;
-  --color-border-custom: #E2E8F0;
-  
-  --radius-custom: 12px;
-  
-  --font-sans: "Inter", var(--font-geist-sans), sans-serif;
+  --font-sans: "Plus Jakarta Sans", var(--font-geist-sans), sans-serif;
 }
 
-:root {
-  --background: #F8FAFC;
-  --foreground: #0F172A;
-  --card: #FFFFFF;
+/* ══════════════════════════════════════════
+   EARIO.AI DUAL THEME CONFIGURATION
+   ══════════════════════════════════════════ */
+:root, [data-theme="light"] {
+  --bg-app: #F5F7FB;
+  --bg-panel: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-hover: #F8FAFC;
+  --bg-input: #F8FAFC;
+  --bg-badge-success: #E6F4EA;
+  --bg-badge-warning: #FEF3D6;
+  --bg-badge-danger: #FCE8E6;
+
+  --border-color: #E2E8F0;
+  --border-color-hover: #CBD5E1;
+
+  --text-main: #1E293B;
+  --text-muted: #64748B;
+  --text-light: #94A3B8;
+
+  --primary: #006FEE;
+  --primary-hover: #005BC4;
+  --primary-muted: rgba(0, 111, 238, 0.08);
+
+  --success: #137333;
+  --warning: #B06000;
+  --danger: #C5221F;
+
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.02), 0 2px 8px rgba(0, 0, 0, 0.01);
+  --shadow-dropdown: 0 10px 30px rgba(0, 0, 0, 0.06);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --card: #171717;
-  }
+[data-theme="dark"] {
+  --bg-app: #0B0F19;
+  --bg-panel: #111827;
+  --bg-card: #1F2937;
+  --bg-hover: #374151;
+  --bg-input: #111827;
+  --bg-badge-success: rgba(16, 185, 129, 0.1);
+  --bg-badge-warning: rgba(245, 158, 11, 0.1);
+  --bg-badge-danger: rgba(239, 68, 68, 0.1);
+
+  --border-color: #374151;
+  --border-color-hover: #4B5563;
+
+  --text-main: #F9FAFB;
+  --text-muted: #9CA3AF;
+  --text-light: #6B7280;
+
+  --primary: #3B82F6;
+  --primary-hover: #60A5FA;
+  --primary-muted: rgba(59, 130, 246, 0.15);
+
+  --success: #34D399;
+  --warning: #FBBF24;
+  --danger: #F87171;
+
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.2);
+  --shadow-dropdown: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
 
+/* ══════════════════════════════════════════
+   GLOBAL STYLES
+   ══════════════════════════════════════════ */
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background-color: var(--bg-app);
+  color: var(--text-main);
   font-family: var(--font-sans);
+  transition: background-color 0.25s ease, color 0.25s ease;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Smooth transition for theme switching */
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Custom Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-color-hover);
+}
+
+/* ── Keyframes & Animations ── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(1deg); }
+}
+
+@keyframes float-delayed {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(-1deg); }
+}
+
+@keyframes cloud-flow {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float-delayed 7s ease-in-out infinite;
+}
+
+.animate-cloud {
+  animation: cloud-flow 60s linear infinite;
 }
