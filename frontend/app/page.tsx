@@ -40,19 +40,18 @@ import {
 } from 'lucide-react';
 
 // ─── Tabs ───
-type TabKey = 'dashboard' | 'products' | 'bom' | 'inventory' | 'purchases' | 'sales' | 'manufacturing' | 'procurement' | 'users' | 'audit';
+type TabKey = 'dashboard' | 'products' | 'bom' | 'inventory' | 'purchases' | 'sales' | 'manufacturing' | 'users' | 'audit';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
   { key: 'products', label: 'Products', icon: <Package size={18} /> },
-  { key: 'bom', label: 'Bill of Materials', icon: <Settings2 size={18} /> },
   { key: 'inventory', label: 'Inventory', icon: <Warehouse size={18} /> },
-  { key: 'purchases', label: 'Purchases', icon: <ShoppingCart size={18} /> },
   { key: 'sales', label: 'Sales Orders', icon: <ShoppingBag size={18} /> },
-  { key: 'manufacturing', label: 'Manufacturing', icon: <Factory size={18} /> },
-  { key: 'procurement', label: 'Procurement', icon: <Zap size={18} /> },
-  { key: 'users', label: 'Users & Permissions', icon: <Users size={18} />, adminOnly: true },
-  { key: 'audit', label: 'Audit Trail', icon: <ScrollText size={18} /> },
+  { key: 'purchases', label: 'Purchase Orders', icon: <ShoppingCart size={18} /> },
+  { key: 'manufacturing', label: 'Manufacturing Orders', icon: <Factory size={18} /> },
+  { key: 'bom', label: 'Bills of Materials', icon: <Settings2 size={18} /> },
+  { key: 'users', label: 'User Permissions', icon: <Users size={18} />, adminOnly: true },
+  { key: 'audit', label: 'Audit Trails', icon: <ScrollText size={18} /> },
 ];
 
 // ─── Helpers ───
@@ -164,7 +163,7 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   }, [onClose]);
   const color = type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700';
   return (
-    <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border shadow-lg text-sm font-medium animate-fade-in flex items-center gap-2 ${color}`}>
+    <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl border shadow-lg text-sm font-medium animate-fade-in flex items-center gap-2 ${color}`}>
       {type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
       {message}
       <button onClick={onClose} className="ml-2 hover:opacity-70 cursor-pointer"><X size={14} /></button>
@@ -1262,7 +1261,10 @@ function SalesTab({ toast }: { toast: (m: string, t: 'success' | 'error') => voi
     setSaving(true);
     try {
       const itemsPayload = draftItems.map(item => ({ productId: item.productId, quantity: item.quantity }));
-      const checkResult = await checkSalesOrderProcurement({ items: itemsPayload });
+      const checkResult = await checkSalesOrderProcurement({
+        customerName: customer,
+        items: itemsPayload
+      });
 
       if (checkResult.available) {
         await createSalesOrder({
@@ -1932,7 +1934,6 @@ export default function Home() {
       case 'purchases': return <PurchasesTab toast={showToast} />;
       case 'sales': return <SalesTab toast={showToast} />;
       case 'manufacturing': return <ManufacturingTab toast={showToast} />;
-      case 'procurement': return <ProcurementTab toast={showToast} />;
       case 'users': return <UsersTab toast={showToast} />;
       case 'audit': return <AuditTab />;
     }

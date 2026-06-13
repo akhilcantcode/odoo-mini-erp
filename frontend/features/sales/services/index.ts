@@ -22,6 +22,7 @@ export async function createSalesOrder(data: {
 }
 
 export async function checkSalesOrderProcurement(data: {
+  customerName: string;
   items: { productId: string; quantity: number }[];
 }): Promise<{
   available: boolean;
