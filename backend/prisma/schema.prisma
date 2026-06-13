@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//////////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////////
+
+enum ProcurementType {
+  purchase
+  manufacture
+}
+
+enum SalesOrderStatus {
+  draft
+  confirmed
+  partial
+  delivered
+  cancelled
+}
+
+enum PurchaseOrderStatus {
+  draft
+  confirmed
+  partial
+  received
+}
+
+enum ManufacturingStatus {
+  draft
+  in_progress
+  completed
+}
+
+enum StockMovementType {
+  SALE
+  PURCHASE
+  MANUFACTURE_CONSUME
+  MANUFACTURE_PRODUCE
+}
+
+enum ReservationSourceType {
+  sales
+  manufacturing
+}
+
+enum RoleType {
+  ADMIN
+  SALES
+  PURCHASE
+  MANUFACTURING
+  INVENTORY
+  OWNER
+}
+
+enum PermissionAction {
+  READ
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum Module {
+  PRODUCT
+  SALES
+  PURCHASE
+  MANUFACTURING
+  INVENTORY
+  AUDIT
+}
+
+//////////////////////////////////////////////////////
+// MODELS
+//////////////////////////////////////////////////////
+
+model Product {
+  id              String          @id @default(uuid())
+  name            String
+  salesPrice      Float?
+  costPrice       Float?
+  procurementType ProcurementType
+  procureOnDemand Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+
+  inventory           Inventory?
+  bom                 BoM?
+  ledgerEntries       StockLedger[]
+  salesOrderItems     SalesOrderItem[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  boMItems            BoMItem[]
+  manufacturingOrders ManufacturingOrder[]
+  reservations        Reservation[]
+}
+
+model Inventory {
+  productId String  @id
+  product   Product @relation(fields: [productId], references: [id])
+
+  onHandQty   Float    @default(0)
+  reservedQty Float    @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+model StockLedger {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  changeQty   Float
+  type        StockMovementType
+  referenceId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model SalesOrder {
+  id           String           @id @default(uuid())
+  customerName String
+  status       SalesOrderStatus
+  createdAt    DateTime         @default(now())
+
+  items SalesOrderItem[]
+}
+
+model SalesOrderItem {
+  id        String @id @default(uuid())
+  orderId   String
+  productId String
+
+  order   SalesOrder @relation(fields: [orderId], references: [id])
+  product Product    @relation(fields: [productId], references: [id])
+
+  quantity Float
+}
+
+model PurchaseOrder {
+  id         String              @id @default(uuid())
+  vendorName String
+  status     PurchaseOrderStatus
+  createdAt  DateTime            @default(now())
+
+  items PurchaseOrderItem[]
+}
+
+model PurchaseOrderItem {
+  id        String @id @default(uuid())
+  orderId   String
+  productId String
+
+  order   PurchaseOrder @relation(fields: [orderId], references: [id])
+  product Product       @relation(fields: [productId], references: [id])
+
+  quantity Float
+}
+
+model BoM {
+  id        String  @id @default(uuid())
+  productId String  @unique
+  product   Product @relation(fields: [productId], references: [id])
+
+  items BoMItem[]
+}
+
+model BoMItem {
+  id          String @id @default(uuid())
+  bomId       String
+  componentId String
+
+  bom       BoM     @relation(fields: [bomId], references: [id])
+  component Product @relation(fields: [componentId], references: [id])
+
+  quantity Float
+}
+
+model ManufacturingOrder {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  quantity  Float
+  status    ManufacturingStatus
+  createdAt DateTime            @default(now())
+}
+
+model Reservation {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  reservedQty Float
+  sourceType  ReservationSourceType
+  sourceId    String
+}
+
+//////////////////////////////////////////////////////
+// RBAC
+//////////////////////////////////////////////////////
+
+model User {
+  id       String @id @default(uuid())
+  name     String
+  email    String @unique
+  password String
+
+  roles UserRole[]
+}
+
+model Role {
+  id   String   @id @default(uuid())
+  name RoleType @unique
+
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+}
+
+model Permission {
+  id     String           @id @default(uuid())
+  module Module
+  action PermissionAction
+
+  roles RolePermission[]
+
+  @@unique([module, action])
+}
+
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+}
+
+//////////////////////////////////////////////////////
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  action     String
+  oldValue   Json?
+  newValue   Json?
+  createdAt  DateTime @default(now())
+}
