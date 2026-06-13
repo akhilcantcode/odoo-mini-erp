@@ -433,67 +433,69 @@ function BomTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void 
   };
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Bills of Materials (BoM)</h2>
-        <Btn variant="ghost" size="sm" onClick={refresh}><RefreshCw size={14} /></Btn>
-      </div>
+    <>
+      <div className="space-y-4 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Bills of Materials (BoM)</h2>
+          <Btn variant="ghost" size="sm" onClick={refresh}><RefreshCw size={14} /></Btn>
+        </div>
 
-      {loading ? (
-        <div className="flex justify-center py-16"><RefreshCw size={20} className="animate-spin-slow text-sky-500" /></div>
-      ) : products.length === 0 ? (
-        <Card><EmptyState icon={<Settings2 size={20} />} title="No products found" description="Create products first to configure their Bill of Materials." /></Card>
-      ) : (
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
-                  <th className="px-5 py-3">Finished Product</th>
-                  <th className="px-5 py-3">Strategy</th>
-                  <th className="px-5 py-3">Components / Ingredients</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {products.map((p) => (
-                  <tr key={p.id} className="hover:bg-sky-50/30 transition">
-                    <td className="px-5 py-3 font-medium text-gray-800">{p.name}</td>
-                    <td className="px-5 py-3">
-                      <StatusBadge status={p.procurementType} />
-                    </td>
-                    <td className="px-5 py-3 text-gray-600">
-                      {p.bom && p.bom.items && p.bom.items.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {p.bom.items.map((item, idx) => (
-                            <span key={item.id || idx} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-100">
-                              {item.component?.name || 'Unknown'} (×{item.quantity})
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 text-xs italic">No components configured</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Btn variant="secondary" size="sm" onClick={() => openBom(p.id)}>
-                          <Settings2 size={13} /> Manage BoM
-                        </Btn>
-                        {p.bom && p.bom.items && p.bom.items.length > 0 && (
-                          <Btn variant="ghost" size="sm" onClick={() => handleClearBom(p.id)} className="text-red-500 hover:text-red-700">
-                            Clear
-                          </Btn>
-                        )}
-                      </div>
-                    </td>
+        {loading ? (
+          <div className="flex justify-center py-16"><RefreshCw size={20} className="animate-spin-slow text-sky-500" /></div>
+        ) : products.filter(p => p.procurementType === 'manufacture').length === 0 ? (
+          <Card><EmptyState icon={<Settings2 size={20} />} title="No manufactured products" description="Only products with the 'Manufacture' strategy can have a Bill of Materials." /></Card>
+        ) : (
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
+                    <th className="px-5 py-3">Finished Product</th>
+                    <th className="px-5 py-3">Strategy</th>
+                    <th className="px-5 py-3">Components / Ingredients</th>
+                    <th className="px-5 py-3 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {products.filter(p => p.procurementType === 'manufacture').map((p) => (
+                    <tr key={p.id} className="hover:bg-sky-50/30 transition">
+                      <td className="px-5 py-3 font-medium text-gray-800">{p.name}</td>
+                      <td className="px-5 py-3">
+                        <StatusBadge status={p.procurementType} />
+                      </td>
+                      <td className="px-5 py-3 text-gray-600">
+                        {p.bom && p.bom.items && p.bom.items.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {p.bom.items.map((item, idx) => (
+                              <span key={item.id || idx} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-100">
+                                {item.component?.name || 'Unknown'} (×{item.quantity})
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs italic">No components configured</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Btn variant="secondary" size="sm" onClick={() => openBom(p.id)}>
+                            <Settings2 size={13} /> Manage BoM
+                          </Btn>
+                          {p.bom && p.bom.items && p.bom.items.length > 0 && (
+                            <Btn variant="ghost" size="sm" onClick={() => handleClearBom(p.id)} className="text-red-500 hover:text-red-700">
+                              Clear
+                            </Btn>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+      </div>
 
       {/* BoM Modal */}
       {bomProductId && (
@@ -537,7 +539,7 @@ function BomTab({ toast }: { toast: (m: string, t: 'success' | 'error') => void 
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
