@@ -27,4 +27,18 @@ router.get(
   controller.getById
 );
 
+router.post(
+  '/:id/confirm',
+  authenticate,
+  requirePermission(Module.SALES, PermissionAction.UPDATE),
+  controller.confirm
+);
+
+router.post(
+  '/:id/deliver',
+  authenticate,
+  requirePermission(Module.INVENTORY, PermissionAction.UPDATE),
+  controller.deliver
+);
+
 export { router as salesRouter };

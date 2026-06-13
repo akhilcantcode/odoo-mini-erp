@@ -10,6 +10,7 @@ export interface Product extends BaseEntity {
     onHandQty: number;
     reservedQty: number;
   };
+  bom?: BoM;
 }
 
 export interface BoMItem {

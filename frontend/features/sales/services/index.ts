@@ -14,3 +14,15 @@ export async function createSalesOrder(data: {
     body: JSON.stringify(data),
   });
 }
+
+export async function confirmSalesOrder(id: string): Promise<SalesOrder> {
+  return fetchApi(`/sales/${id}/confirm`, {
+    method: 'POST',
+  });
+}
+
+export async function deliverSalesOrder(id: string): Promise<SalesOrder> {
+  return fetchApi(`/sales/${id}/deliver`, {
+    method: 'POST',
+  });
+}
