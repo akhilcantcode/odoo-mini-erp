@@ -4,6 +4,6 @@ import { AuditController } from './audit.controller';
 const router = Router();
 const controller = new AuditController();
 
-// Audit routes will be defined here
+router.get('/', controller.list);
 
 export { router as auditRouter };

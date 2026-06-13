@@ -4,6 +4,6 @@ import { ProcurementController } from './procurement.controller';
 const router = Router();
 const controller = new ProcurementController();
 
-// Procurement routes will be defined here
+router.post('/run', controller.run);
 
 export { router as procurementRouter };

@@ -4,6 +4,8 @@ import { InventoryController } from './inventory.controller';
 const router = Router();
 const controller = new InventoryController();
 
-// Inventory routes will be defined here
+router.get('/', controller.list);
+router.post('/adjust', controller.adjust);
+router.get('/ledger', controller.getLedger);
 
 export { router as inventoryRouter };

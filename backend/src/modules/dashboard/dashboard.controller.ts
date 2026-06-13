@@ -8,5 +8,19 @@ export class DashboardController {
     this.service = new DashboardService();
   }
 
-  // HTTP handlers for retrieving dashboard statistics will be defined here
+  /**
+   * GET /stats — Get dashboard statistics.
+   */
+  getStats = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const companyId = req.headers['x-company-id'] as string;
+      if (!companyId) {
+        return res.status(400).json({ message: 'x-company-id header is required' });
+      }
+      const stats = await this.service.getStats(companyId);
+      res.json(stats);
+    } catch (err) {
+      next(err);
+    }
+  };
 }

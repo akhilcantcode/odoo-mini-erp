@@ -4,6 +4,6 @@ import { DashboardController } from './dashboard.controller';
 const router = Router();
 const controller = new DashboardController();
 
-// Dashboard routes will be defined here
+router.get('/stats', controller.getStats);
 
 export { router as dashboardRouter };
