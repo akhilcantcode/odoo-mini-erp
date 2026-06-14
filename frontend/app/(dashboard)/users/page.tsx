@@ -19,7 +19,7 @@ import { Btn, Card, Input, Select, EmptyState } from '../../../components/ui';
 import {
   RefreshCw, Plus, Check, Trash, Mail, Phone, MapPin, X, Pencil,
   Shield, CheckSquare, XSquare, Info, ShieldAlert, Award,
-  Users, UserCheck, UserCog, Search, Lock, LayoutGrid, List
+  Users, UserCheck, UserCog, Search, Lock, LayoutGrid, List, Eye, EyeOff
 } from 'lucide-react';
 
 const OVERALL_MATRIX = [
@@ -187,15 +187,33 @@ export default function UsersPage() {
   const [uPassword, setUPassword] = useState('');
   const [uRoles, setURoles] = useState<string[]>([]);
   const [savingUser, setSavingUser] = useState(false);
+  const [suggestedPassword, setSuggestedPassword] = useState('');
+  const [showSuggestion, setShowSuggestion] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Edit User State
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (showUserForm && !editingUserId && uName.trim().length >= 2 && uEmail.includes('@')) {
+      if (!suggestedPassword) {
+        const randomNum = Math.floor(Math.random() * 10);
+        const randomPart = Math.random().toString(36).substring(2, 7).toUpperCase();
+        const specialChars = '!@#$%^&*';
+        const randomSpecial = specialChars[Math.floor(Math.random() * specialChars.length)];
+        setSuggestedPassword(`${uName.split(' ')[0]}${randomPart}${randomNum}${randomSpecial}`);
+      }
+    } else {
+      setSuggestedPassword('');
+      setShowSuggestion(false);
+    }
+  }, [uName, uEmail, showUserForm, editingUserId, suggestedPassword]);
 
   // Form View detail modal state (Drawings 2-5)
   const [selectedUserForDetail, setSelectedUserForDetail] = useState<ManagedUser | null>(null);
   const [formViewPosition, setFormViewPosition] = useState<string>('Sales Manager');
   const [activeFormViewTab, setActiveFormViewTab] = useState<'sales' | 'purchase' | 'manufacturing' | 'product' | 'inventory'>('sales');
   const [backendMatrix, setBackendMatrix] = useState<RoleMatrixResponse | null>(null);
-
-  // Edit User State
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
 
   // Role Mappings State
   const [selectedRoleName, setSelectedRoleName] = useState<string>('SALES');
@@ -680,13 +698,54 @@ export default function UsersPage() {
                   <Input label="Name" value={uName} onChange={(e) => setUName(e.target.value)} required />
                   <Input label="Email" type="email" value={uEmail} onChange={(e) => setUEmail(e.target.value)} required />
                   {!editingUserId && (
-                    <Input
-                      label="Password"
-                      type="password"
-                      value={uPassword}
-                      onChange={(e) => setUPassword(e.target.value)}
-                      required
-                    />
+                    <div className="relative">
+                      <Input 
+                        label="Password" 
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••" 
+                        value={uPassword} 
+                        onChange={e => {
+                          setUPassword(e.target.value);
+                          setShowSuggestion(false);
+                        }}
+                        onFocus={() => {
+                          if (suggestedPassword && !uPassword) {
+                            setShowSuggestion(true);
+                          }
+                        }}
+                        onBlur={() => setTimeout(() => setShowSuggestion(false), 200)}
+                        required 
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 bottom-2.5 text-gray-400 hover:text-gray-600 focus:outline-none cursor-pointer"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? <Eye size={16} /> : <EyeOff size={16} />}
+                      </button>
+                      
+                      {/* Google-like Password Suggestion Popover */}
+                      {showSuggestion && (
+                        <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-white border border-gray-200 rounded-lg shadow-xl shadow-sky-900/10 p-1.5 animate-fade-in origin-top">
+                          <div className="flex items-start gap-3 p-2 hover:bg-sky-50/80 rounded-md cursor-pointer transition-colors"
+                               onMouseDown={(e) => {
+                                 e.preventDefault(); // Prevents input blur from firing before click
+                                 setUPassword(suggestedPassword);
+                                 setShowSuggestion(false);
+                               }}>
+                            <div className="mt-0.5 w-6 h-6 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center flex-shrink-0">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                            </div>
+                            <div>
+                              <p className="text-[13px] font-semibold text-gray-900 leading-none">Use suggested password</p>
+                              <p className="text-sm font-mono text-gray-700 mt-1.5 tracking-wide">{suggestedPassword}</p>
+                              <p className="text-[10px] text-gray-400 mt-1 leading-tight">Mini ERP will securely save this strong password for this user.</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
