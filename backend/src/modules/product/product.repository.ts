@@ -62,9 +62,23 @@ export class ProductRepository {
    */
   async create(data: CreateProductInput, companyId: string) {
     return prisma.$transaction(async (tx) => {
+      // Check for duplicate name in same company
+      const existing = await tx.product.findFirst({
+        where: {
+          companyId,
+          name: {
+            equals: data.name.trim(),
+            mode: 'insensitive'
+          }
+        }
+      });
+      if (existing) {
+        throw new Error(`Product with name "${data.name}" already exists.`);
+      }
+
       const product = await tx.product.create({
         data: {
-          name: data.name,
+          name: data.name.trim(),
           salesPrice: data.salesPrice,
           costPrice: data.costPrice,
           procurementType: data.procurementType,
@@ -92,10 +106,27 @@ export class ProductRepository {
    * Update a product.
    */
   async update(id: string, data: UpdateProductInput, companyId: string) {
+    if (data.name) {
+      const trimmedName = data.name.trim();
+      const existing = await prisma.product.findFirst({
+        where: {
+          companyId,
+          name: {
+            equals: trimmedName,
+            mode: 'insensitive'
+          },
+          NOT: { id }
+        }
+      });
+      if (existing) {
+        throw new Error(`Product with name "${data.name}" already exists.`);
+      }
+    }
+
     return prisma.product.update({
       where: { id },
       data: {
-        ...(data.name && { name: data.name }),
+        ...(data.name && { name: data.name.trim() }),
         ...(data.salesPrice !== undefined && { salesPrice: data.salesPrice }),
         ...(data.costPrice !== undefined && { costPrice: data.costPrice }),
         ...(data.procurementType && { procurementType: data.procurementType }),
@@ -307,11 +338,33 @@ export class ProductRepository {
    */
   async importMany(products: CreateProductInput[], companyId: string) {
     return prisma.$transaction(async (tx) => {
+      // Find all existing products in this company to check duplicates by name
+      const existingProducts = await tx.product.findMany({
+        where: { companyId },
+        select: { name: true }
+      });
+      const existingNamesSet = new Set(existingProducts.map(p => p.name.toLowerCase().trim()));
+
+      // Also track names within the import data to check for duplicates in the CSV itself
+      const seenNames = new Set<string>();
+
+      for (const p of products) {
+        const normalizedName = p.name.toLowerCase().trim();
+        if (existingNamesSet.has(normalizedName)) {
+          throw new Error(`Product with name "${p.name}" already exists.`);
+        }
+        if (seenNames.has(normalizedName)) {
+          throw new Error(`Duplicate product name "${p.name}" found in import data.`);
+        }
+        seenNames.add(normalizedName);
+      }
+
       let count = 0;
       for (const p of products) {
+        // Create new product
         const product = await tx.product.create({
           data: {
-            name: p.name,
+            name: p.name.trim(),
             salesPrice: p.salesPrice,
             costPrice: p.costPrice,
             procurementType: p.procurementType,
@@ -321,6 +374,7 @@ export class ProductRepository {
           },
         });
 
+        // Create inventory entry for the new product
         await tx.inventory.create({
           data: {
             productId: product.id,

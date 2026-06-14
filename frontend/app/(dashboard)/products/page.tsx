@@ -123,6 +123,8 @@ export default function ProductsPage() {
       }
 
       const items: typeof csvPreview = [];
+      const seenNamesInCsv = new Set<string>();
+      const existingProductNames = new Set(products.map(p => p.name.toLowerCase().trim()));
 
       for (let i = 1; i < parsedLines.length; i++) {
         const row = parsedLines[i];
@@ -139,6 +141,17 @@ export default function ProductsPage() {
 
         if (!rawName) {
           errors.push('Name is required');
+        } else {
+          const normalizedName = rawName.toLowerCase();
+          if (seenNamesInCsv.has(normalizedName)) {
+            errors.push(`Duplicate product name "${rawName}" in CSV`);
+          } else {
+            seenNamesInCsv.add(normalizedName);
+          }
+
+          if (existingProductNames.has(normalizedName)) {
+            errors.push(`Product "${rawName}" already exists in system`);
+          }
         }
 
         let salesPrice: number | null = null;
@@ -798,8 +811,8 @@ export default function ProductsPage() {
         </div>
       )}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex justify-center items-start bg-black/60 backdrop-blur-sm p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[80vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden mt-[10vh] mb-4">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <div>
