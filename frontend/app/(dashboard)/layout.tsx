@@ -15,7 +15,7 @@ import {
 type TabKey = 'dashboard' | 'products' | 'inventory' | 'sales' | 'purchases' | 'manufacturing' | 'bom' | 'users' | 'audit';
 
 const TABS: { key: TabKey; path: string; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
-  { key: 'dashboard', path: '/', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
+  { key: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
   { key: 'products', path: '/products', label: 'Products', icon: <Package size={18} /> },
   { key: 'inventory', path: '/inventory', label: 'Inventory', icon: <Warehouse size={18} /> },
   { key: 'sales', path: '/sales', label: 'Sales Orders', icon: <ShoppingBag size={18} /> },
