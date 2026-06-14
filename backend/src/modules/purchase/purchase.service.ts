@@ -37,17 +37,17 @@ export class PurchaseService {
    * Create a new purchase order in draft status.
    * Validates input with Zod.
    */
-  async create(data: unknown, companyId: string) {
+  async create(data: unknown, companyId: string, userId?: string) {
     const parsed = CreatePurchaseOrderSchema.parse(data);
     const po = await this.repository.create(parsed, companyId);
-    await this.auditService.log('PurchaseOrder', po.id, 'CREATE', null, { vendorName: po.vendorName, status: po.status }, companyId);
+    await this.auditService.log('PurchaseOrder', po.id, 'CREATE', null, { vendorName: po.vendorName, status: po.status }, companyId, userId);
     return po;
   }
 
   /**
    * Confirm a draft purchase order.
    */
-  async confirm(id: string, companyId: string) {
+  async confirm(id: string, companyId: string, userId?: string) {
     const po = await this.getById(id, companyId);
 
     if (po.status !== PurchaseOrderStatus.draft) {
@@ -57,7 +57,7 @@ export class PurchaseService {
     }
 
     const updated = await this.repository.updateStatus(id, PurchaseOrderStatus.confirmed, companyId);
-    await this.auditService.log('PurchaseOrder', id, 'CONFIRM', { status: 'draft' }, { status: 'confirmed' }, companyId);
+    await this.auditService.log('PurchaseOrder', id, 'CONFIRM', { status: 'draft' }, { status: 'confirmed' }, companyId, userId);
     return updated;
   }
 
@@ -65,9 +65,9 @@ export class PurchaseService {
    * Receive a confirmed purchase order.
    * Increments inventory, writes stock ledger entries, updates status to received.
    */
-  async receive(id: string, companyId: string) {
+  async receive(id: string, companyId: string, userId?: string) {
     const result = await this.repository.receive(id, companyId);
-    await this.auditService.log('PurchaseOrder', id, 'RECEIVE', { status: 'confirmed' }, { status: 'received' }, companyId);
+    await this.auditService.log('PurchaseOrder', id, 'RECEIVE', { status: 'confirmed' }, { status: 'received' }, companyId, userId);
     return result;
   }
 }

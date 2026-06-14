@@ -140,7 +140,7 @@ export class SalesService {
   /**
    * Create a new sales order in draft status along with auto-generated MOs and POs in a transaction.
    */
-  async create(data: unknown, companyId: string) {
+  async create(data: unknown, companyId: string, userId?: string) {
     const parsed = CreateSalesOrderSchema.parse(data);
 
     return prisma.$transaction(async (tx) => {
@@ -161,6 +161,7 @@ export class SalesService {
       }
 
       // 2. Automatically trigger Manufacturing Orders for shortages of manufactured goods
+      const procuredMOs: { id: string; productName: string; quantity: number }[] = [];
       for (const item of parsed.items) {
         const product = await tx.product.findUnique({
           where: { id: item.productId, companyId },
@@ -186,7 +187,7 @@ export class SalesService {
           });
 
           if (bom) {
-            await this.manufacturingRepository.create(
+            const mo = await this.manufacturingRepository.create(
               {
                 productId: item.productId,
                 quantity: shortage,
@@ -194,14 +195,29 @@ export class SalesService {
               companyId,
               tx
             );
+            procuredMOs.push({
+              id: mo.id,
+              productName: product.name,
+              quantity: shortage,
+            });
+            await this.auditService.log(
+              'ManufacturingOrder',
+              mo.id,
+              'CREATE',
+              null,
+              { productId: mo.productId, quantity: mo.quantity, status: mo.status, sourceSalesOrderId: order.id },
+              companyId,
+              userId
+            );
           }
         }
       }
 
       // 3. Create requested Purchase Orders if specified in procurement payload
+      const procuredPOs: { id: string; vendorName: string; itemsCount: number }[] = [];
       if (parsed.procurement && parsed.procurement.purchaseOrders) {
         for (const po of parsed.procurement.purchaseOrders) {
-          await this.purchaseRepository.create(
+          const createdPO = await this.purchaseRepository.create(
             {
               vendorName: po.vendorName,
               items: po.items,
@@ -209,11 +225,36 @@ export class SalesService {
             companyId,
             tx
           );
+          procuredPOs.push({
+            id: createdPO.id,
+            vendorName: createdPO.vendorName,
+            itemsCount: createdPO.items.length,
+          });
+          await this.auditService.log(
+            'PurchaseOrder',
+            createdPO.id,
+            'CREATE',
+            null,
+            { vendorName: createdPO.vendorName, status: createdPO.status, sourceSalesOrderId: order.id },
+            companyId,
+            userId
+          );
         }
       }
 
+      // Log SalesOrder creation
+      await this.auditService.log(
+        'SalesOrder',
+        order.id,
+        'CREATE',
+        null,
+        { customerName: order.customerName, status: order.status },
+        companyId,
+        userId
+      );
+
       // 4. Return the created sales order with its items
-      return tx.salesOrder.findUnique({
+      const fullOrder = await tx.salesOrder.findUnique({
         where: { id: order.id },
         include: {
           items: {
@@ -223,6 +264,12 @@ export class SalesService {
           },
         },
       });
+
+      return {
+        order: fullOrder,
+        procuredMOs,
+        procuredPOs,
+      };
     });
   }
 
@@ -249,7 +296,7 @@ export class SalesService {
   /**
    * Confirm a draft sales order.
    */
-  async confirm(id: string, companyId: string) {
+  async confirm(id: string, companyId: string, userId?: string) {
     const updated = await this.repository.confirm(id, companyId);
     await this.auditService.log(
       'SalesOrder',
@@ -257,7 +304,8 @@ export class SalesService {
       'CONFIRM',
       { status: 'draft' },
       { status: 'confirmed' },
-      companyId
+      companyId,
+      userId
     );
     return updated;
   }
@@ -265,7 +313,7 @@ export class SalesService {
   /**
    * Deliver a confirmed sales order.
    */
-  async deliver(id: string, companyId: string) {
+  async deliver(id: string, companyId: string, userId?: string) {
     const order = await this.getById(id, companyId);
     const updated = await this.repository.deliver(id, companyId);
     await this.auditService.log(
@@ -274,7 +322,8 @@ export class SalesService {
       'DELIVER',
       { status: order.status },
       { status: 'delivered' },
-      companyId
+      companyId,
+      userId
     );
     return updated;
   }

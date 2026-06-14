@@ -36,17 +36,17 @@ export class ManufacturingService {
   /**
    * Create a new manufacturing order.
    */
-  async create(data: unknown, companyId: string) {
+  async create(data: unknown, companyId: string, userId?: string) {
     const parsed = CreateManufacturingOrderSchema.parse(data);
     const mo = await this.repository.create(parsed, companyId);
-    await this.auditService.log('ManufacturingOrder', mo.id, 'CREATE', null, { productId: mo.productId, quantity: mo.quantity, status: mo.status }, companyId);
+    await this.auditService.log('ManufacturingOrder', mo.id, 'CREATE', null, { productId: mo.productId, quantity: mo.quantity, status: mo.status }, companyId, userId);
     return mo;
   }
 
   /**
    * Confirm a manufacturing order (draft -> confirmed)
    */
-  async confirm(id: string, companyId: string) {
+  async confirm(id: string, companyId: string, userId?: string) {
     const mo = await this.getById(id, companyId);
 
     if (mo.status !== ManufacturingStatus.draft) {
@@ -56,14 +56,14 @@ export class ManufacturingService {
     }
 
     const updatedMo = await this.repository.updateStatus(id, ManufacturingStatus.confirmed);
-    await this.auditService.log('ManufacturingOrder', id, 'CONFIRM', { status: 'draft' }, { status: 'confirmed' }, companyId);
+    await this.auditService.log('ManufacturingOrder', id, 'CONFIRM', { status: 'draft' }, { status: 'confirmed' }, companyId, userId);
     return updatedMo;
   }
 
   /**
    * Cancel a manufacturing order (draft/confirmed/in_progress -> cancelled)
    */
-  async cancel(id: string, companyId: string) {
+  async cancel(id: string, companyId: string, userId?: string) {
     const mo = await this.getById(id, companyId);
 
     if (mo.status === ManufacturingStatus.completed || mo.status === ManufacturingStatus.cancelled) {
@@ -73,7 +73,7 @@ export class ManufacturingService {
     }
 
     const updatedMo = await this.repository.updateStatus(id, ManufacturingStatus.cancelled);
-    await this.auditService.log('ManufacturingOrder', id, 'CANCEL', { status: mo.status }, { status: 'cancelled' }, companyId);
+    await this.auditService.log('ManufacturingOrder', id, 'CANCEL', { status: mo.status }, { status: 'cancelled' }, companyId, userId);
     return updatedMo;
   }
 
@@ -81,7 +81,7 @@ export class ManufacturingService {
    * Start a manufacturing order — consume components from inventory.
    * Allows transitioning from either draft or confirmed.
    */
-  async start(id: string, companyId: string) {
+  async start(id: string, companyId: string, userId?: string) {
     const mo = await this.getById(id, companyId);
 
     if (mo.status !== ManufacturingStatus.draft && mo.status !== ManufacturingStatus.confirmed) {
@@ -182,14 +182,14 @@ export class ManufacturingService {
     });
 
     // Audit log after transaction completes
-    await this.auditService.log('ManufacturingOrder', id, 'START', { status: mo.status }, { status: 'in_progress' }, companyId);
+    await this.auditService.log('ManufacturingOrder', id, 'START', { status: mo.status }, { status: 'in_progress' }, companyId, userId);
     return result;
   }
 
   /**
    * Complete a manufacturing order — produce finished goods into inventory.
    */
-  async complete(id: string, companyId: string) {
+  async complete(id: string, companyId: string, userId?: string) {
     const mo = await this.getById(id, companyId);
 
     if (mo.status !== ManufacturingStatus.in_progress) {
@@ -242,7 +242,7 @@ export class ManufacturingService {
       return updatedMo;
     });
 
-    await this.auditService.log('ManufacturingOrder', id, 'COMPLETE', { status: 'in_progress' }, { status: 'completed' }, companyId);
+    await this.auditService.log('ManufacturingOrder', id, 'COMPLETE', { status: 'in_progress' }, { status: 'completed' }, companyId, userId);
     return result;
   }
 

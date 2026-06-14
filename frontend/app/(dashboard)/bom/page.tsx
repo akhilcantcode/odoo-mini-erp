@@ -7,7 +7,7 @@ import type { Product, BoMItem } from '../../../features/product/types';
 import { useToast } from '../layout';
 import { Btn, Card, Input, Select, EmptyState, StatusBadge } from '../../../components/ui';
 import {
-  Settings2, RefreshCw, X, Plus, Trash2, ArrowLeft, Save, ScrollText
+  Settings2, RefreshCw, X, Plus, Trash2, ArrowLeft, Save, ScrollText, Search, Cpu, Layers, Activity
 } from 'lucide-react';
 
 export default function BomPage() {
@@ -39,6 +39,7 @@ export default function BomPage() {
 
   const [activeTab, setActiveTab] = useState<'components' | 'workOrders'>('components');
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -505,11 +506,102 @@ export default function BomPage() {
     );
   }
 
+  // Helper methods
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const getAvatarColor = (name: string) => {
+    const colors = [
+      'bg-blue-100 text-blue-700',
+      'bg-purple-100 text-purple-700',
+      'bg-emerald-100 text-emerald-700',
+      'bg-amber-100 text-amber-700',
+      'bg-rose-100 text-rose-700',
+      'bg-cyan-100 text-cyan-700',
+      'bg-indigo-100 text-indigo-700',
+      'bg-teal-100 text-teal-700',
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  // Computed stats
+  const totalTemplates = manufacturedProducts.filter((p) => p.bom && p.bom.items && p.bom.items.length > 0).length;
+  const totalManufactured = manufacturedProducts.length;
+  const activeSteps = manufacturedProducts.reduce((sum, p) => sum + (p.bom?.operations?.length || 0), 0);
+  const componentsConfigured = manufacturedProducts.reduce((sum, p) => sum + (p.bom?.items?.length || 0), 0);
+
+  const statCards = [
+    {
+      label: 'TOTAL TEMPLATES',
+      value: totalTemplates,
+      sub: 'Configured BoM recipes',
+      icon: <Layers size={18} />,
+      iconBg: 'bg-blue-50 text-blue-500',
+      borderColor: 'border-blue-100',
+    },
+    {
+      label: 'MANUFACTURED PRODUCTS',
+      value: totalManufactured,
+      sub: 'Strategy set to Manufacture',
+      icon: <Cpu size={18} />,
+      iconBg: 'bg-violet-50 text-violet-500',
+      borderColor: 'border-violet-100',
+    },
+    {
+      label: 'ACTIVE BOM STEPS',
+      value: activeSteps,
+      sub: 'Operations across all BoMs',
+      icon: <Activity size={18} />,
+      iconBg: 'bg-amber-50 text-amber-500',
+      borderColor: 'border-amber-100',
+    },
+    {
+      label: 'COMPONENTS CONFIGURED',
+      value: componentsConfigured,
+      sub: 'Raw material lines',
+      icon: <Settings2 size={18} />,
+      iconBg: 'bg-emerald-50 text-emerald-500',
+      borderColor: 'border-emerald-100',
+    },
+  ];
+
+  // Search filter
+  const filteredProducts = manufacturedProducts.filter((p) => {
+    const query = searchQuery.toLowerCase();
+    const bomId = p.bom?.id || '';
+    const bomRef = p.bom?.reference || '';
+    return (
+      p.name.toLowerCase().includes(query) ||
+      bomId.toLowerCase().includes(query) ||
+      bomRef.toLowerCase().includes(query) ||
+      p.bom?.items?.some((item) => (item.component?.name || '').toLowerCase().includes(query))
+    );
+  });
+
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Bills of Materials (BoM)</h2>
-        <div className="flex gap-2">
+    <div className="space-y-5 animate-fade-in">
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100">
+            <Settings2 size={22} className="text-indigo-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight">Bills of Materials (BoM)</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Define multi-level manufacturing product recipes and shop steps.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           <Btn variant="ghost" size="sm" onClick={refresh}>
             <RefreshCw size={14} />
           </Btn>
@@ -519,11 +611,58 @@ export default function BomPage() {
         </div>
       </div>
 
+      {/* ── Stat Cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {statCards.map((card, idx) => (
+          <div
+            key={card.label}
+            className={`relative overflow-hidden bg-white rounded-xl border ${card.borderColor} p-4 hover:shadow-md transition-all duration-300 group`}
+            style={{ animationDelay: `${idx * 60}ms` }}
+          >
+            <div className="flex items-start justify-between mb-2">
+              <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">{card.label}</p>
+              <div className={`p-1.5 rounded-lg ${card.iconBg} transition-transform duration-300 group-hover:scale-110`}>
+                {card.icon}
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900 tracking-tight">{card.value}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{card.sub}</p>
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-current to-transparent opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
+          </div>
+        ))}
+      </div>
+
+      {/* ── Search Row ── */}
+      <div className="flex items-center justify-between">
+        <div className="relative w-80">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search product, BoM ID, or component..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition placeholder:text-gray-400 shadow-sm"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          Synced just now · {filteredProducts.length} of {manufacturedProducts.length} templates
+        </div>
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-16">
           <RefreshCw size={20} className="animate-spin-slow text-sky-500" />
         </div>
-      ) : manufacturedProducts.length === 0 ? (
+      ) : filteredProducts.length === 0 && manufacturedProducts.length === 0 ? (
         <Card>
           <EmptyState
             icon={<Settings2 size={20} />}
@@ -531,26 +670,36 @@ export default function BomPage() {
             description="Only products with the 'Manufacture' strategy can have a Bill of Materials."
           />
         </Card>
-      ) : (
+      ) : filteredProducts.length === 0 ? (
         <Card>
+          <EmptyState
+            icon={<Search size={20} />}
+            title="No results found"
+            description={`No BoM templates match "${searchQuery}"`}
+          />
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
-                  <th className="px-5 py-3">Reference</th>
-                  <th className="px-5 py-3">Finished Product</th>
-                  <th className="px-5 py-3">Quantity</th>
-                  <th className="px-5 py-3">Components</th>
-                  <th className="px-5 py-3">Operations</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                <tr className="bg-gradient-to-r from-gray-50/80 to-gray-50/40 text-left text-xs text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">
+                  <th className="px-5 py-3.5">Reference</th>
+                  <th className="px-5 py-3.5">Finished Product</th>
+                  <th className="px-5 py-3.5">Quantity</th>
+                  <th className="px-5 py-3.5">Components</th>
+                  <th className="px-5 py-3.5">Operations</th>
+                  <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {manufacturedProducts.map((p) => {
+                {filteredProducts.map((p) => {
                   const hasBom = p.bom && p.bom.items && p.bom.items.length > 0;
+                  const initials = getInitials(p.name);
+                  const avatarColor = getAvatarColor(p.name);
                   return (
-                    <tr key={p.id} className="hover:bg-sky-50/30 transition">
-                      <td className="px-5 py-3 font-mono text-xs font-semibold text-sky-600">
+                    <tr key={p.id} className="hover:bg-sky-50/30 transition-colors duration-150 group">
+                      <td className="px-5 py-3.5 font-mono text-xs font-semibold text-sky-600">
                         {p.bom ? (
                           <button
                             onClick={() => openBomDetail(p.id)}
@@ -562,17 +711,33 @@ export default function BomPage() {
                           <span className="text-gray-300 italic">Not set</span>
                         )}
                       </td>
-                      <td className="px-5 py-3 font-medium text-gray-800">{p.name}</td>
-                      <td className="px-5 py-3 text-gray-600">
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${avatarColor} transition-transform duration-200 group-hover:scale-105 flex-shrink-0`}
+                          >
+                            {initials}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900 leading-tight">{p.name}</p>
+                            {p.bom?.reference && (
+                              <p className="text-[10px] text-gray-400 mt-0.5 font-mono">
+                                Ref: {p.bom.reference}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-gray-600 font-medium">
                         {p.bom ? `${p.bom.quantity || '1.0'} Units` : '—'}
                       </td>
-                      <td className="px-5 py-3 text-gray-600">
+                      <td className="px-5 py-3.5 text-gray-600">
                         {hasBom ? (
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1.5 max-w-xs">
                             {p.bom?.items?.map((item, idx) => (
                               <span
                                 key={item.id || idx}
-                                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-100"
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-50 text-gray-700 border border-gray-100"
                               >
                                 {item.component?.name || 'Unknown'} (×{item.quantity})
                               </span>
@@ -582,7 +747,7 @@ export default function BomPage() {
                           <span className="text-gray-400 text-xs italic">No components configured</span>
                         )}
                       </td>
-                      <td className="px-5 py-3 text-gray-500 font-mono text-xs">
+                      <td className="px-5 py-3.5 text-gray-500 font-mono text-xs">
                         {p.bom?.operations && p.bom.operations.length > 0 ? (
                           <span className="bg-sky-50 text-sky-700 font-semibold px-2 py-0.5 rounded-full">
                             {p.bom.operations.length} Steps
@@ -591,10 +756,10 @@ export default function BomPage() {
                           <span className="text-gray-400 italic">None</span>
                         )}
                       </td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-5 py-3.5 text-right">
                         <div className="flex justify-end gap-2">
                           <Btn variant="secondary" size="sm" onClick={() => openBomDetail(p.id)}>
-                            <Settings2 size={13} /> Manage BoM
+                            <Settings2 size={13} className="inline mr-0.5" /> Manage BoM
                           </Btn>
                           {p.bom && (
                             <Btn

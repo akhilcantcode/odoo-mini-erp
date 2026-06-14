@@ -106,3 +106,22 @@ export async function updateRolePermissions(
   });
 }
 
+export interface RoleMatrixResponse {
+  matrix: { module: string; action: string; admin: string; user: string; none: string }[];
+  fieldPermissions: Record<string, Record<string, { field: string; create: string; view: string; edit: string; delete: string }[]>>;
+}
+
+export async function getRoleMatrix(): Promise<RoleMatrixResponse> {
+  return fetchApi('/roles/matrix');
+}
+
+export async function updateUserRole(
+  userId: string,
+  roles: string[]
+): Promise<{ id: string; name: string; email: string; roles: string[] }> {
+  return fetchApi(`/users/${userId}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ roles }),
+  });
+}
+

@@ -9,6 +9,7 @@ import { manufacturingRouter } from './modules/manufacturing/manufacturing.route
 import { procurementRouter } from './modules/procurement/procurement.routes';
 import { auditRouter } from './modules/audit/audit.routes';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes';
+import { rbacRouter } from './modules/rbac/rbac.routes';
 
 const app: Application = express();
 
@@ -32,6 +33,7 @@ app.use('/api/manufacturing', manufacturingRouter);
 app.use('/api/procurement', procurementRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api', rbacRouter);
 
 // Global Error Handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {

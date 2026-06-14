@@ -116,7 +116,7 @@ export class ProductController {
       if (!companyId) {
         return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
-      const bom = await this.service.setBom(req.params.id, req.body, companyId);
+      const bom = await this.service.setBom(req.params.id, req.body, companyId, (req as any).user?.id);
       res.status(200).json(bom);
     } catch (err: any) {
       if (err.statusCode) {

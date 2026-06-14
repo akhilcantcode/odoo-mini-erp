@@ -9,10 +9,28 @@ export class AuditService {
   }
 
   /**
-   * List audit logs with optional filtering.
+   * List audit logs with optional filtering and pagination.
    */
-  async list(companyId: string, filters?: { entityType?: string; entityId?: string }) {
+  async list(
+    companyId: string,
+    filters?: {
+      entityType?: string;
+      entityId?: string;
+      action?: string;
+      startDate?: string;
+      endDate?: string;
+      page?: number;
+      pageSize?: number;
+    }
+  ) {
     return this.repository.findAll(companyId, filters);
+  }
+
+  /**
+   * Get aggregate stats (total, creates, updates, deletes).
+   */
+  async getStats(companyId: string) {
+    return this.repository.getStats(companyId);
   }
 
   /**
@@ -24,6 +42,7 @@ export class AuditService {
    * @param oldValue - previous state (optional)
    * @param newValue - new state (optional)
    * @param companyId - tenant company ID
+   * @param userId - the user who performed the action (optional)
    */
   async log(
     entityType: string,
@@ -31,10 +50,11 @@ export class AuditService {
     action: string,
     oldValue: any,
     newValue: any,
-    companyId: string
+    companyId: string,
+    userId?: string
   ) {
     return this.repository.create(
-      { entityType, entityId, action, oldValue, newValue },
+      { entityType, entityId, action, oldValue, newValue, userId },
       companyId
     );
   }

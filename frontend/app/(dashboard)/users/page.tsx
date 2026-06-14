@@ -9,11 +9,165 @@ import {
   deleteUser,
   updateRolePermissions,
   ManagedUser,
-  ManagedRole
+  ManagedRole,
+  getRoleMatrix,
+  updateUserRole,
+  RoleMatrixResponse
 } from '../../../services/auth';
 import { useToast } from '../layout';
-import { Btn, Card, Input, Select } from '../../../components/ui';
-import { RefreshCw, Plus, Check, Trash } from 'lucide-react';
+import { Btn, Card, Input, Select, EmptyState } from '../../../components/ui';
+import {
+  RefreshCw, Plus, Check, Trash, Mail, Phone, MapPin, X, Pencil,
+  Shield, CheckSquare, XSquare, Info, ShieldAlert, Award,
+  Users, UserCheck, UserCog, Search, Lock, LayoutGrid, List
+} from 'lucide-react';
+
+const OVERALL_MATRIX = [
+  { module: 'Sales', action: 'View', admin: '✓', user: '✓', none: 'Optional' },
+  { module: 'Sales', action: 'Create', admin: '✓', user: '✓', none: '✗' },
+  { module: 'Sales', action: 'Edit', admin: '✓', user: 'Limited', none: '✗' },
+  { module: 'Sales', action: 'Delete', admin: '✓', user: '✗', none: '✗' },
+  { module: 'Sales', action: 'Approve(Confirm)', admin: '✓', user: '✗', none: '✗' },
+  { module: 'Purchase', action: 'View', admin: '✓', user: '✓', none: 'Optional' },
+  { module: 'Purchase', action: 'Approve', admin: '✓', user: '✗', none: '✗' },
+  { module: 'Purchase', action: 'Edit', admin: '✓', user: 'Limited', none: '✗' },
+  { module: 'Purchase', action: 'Create', admin: '✓', user: '✓', none: '✗' },
+  { module: 'Manufacturing', action: 'Production Entry', admin: '✓', user: '✓', none: '✗' },
+  { module: 'Manufacturing', action: 'Edit BOM', admin: '✓', user: '✗', none: '✗' },
+  { module: 'Manufacturing', action: 'View', admin: '✓', user: '✓', none: 'Optional' },
+  { module: 'Product', action: 'View', admin: '✓', user: '✓', none: 'Optional' },
+  { module: 'Product', action: 'Create', admin: '✓', user: '✓', none: '✗' },
+  { module: 'Product', action: 'Edit', admin: '✓', user: 'Limited', none: '✗' },
+];
+
+const getPositionFromRoles = (roles: string[]): string => {
+  if (roles.includes('OWNER') || roles.includes('ADMIN')) return 'System Administrator';
+  if (roles.includes('SALES')) return 'Sales Manager';
+  if (roles.includes('PURCHASE')) return 'Purchase Manager';
+  if (roles.includes('MANUFACTURING')) return 'Production Manager';
+  if (roles.includes('INVENTORY')) return 'Inventory Manager';
+  return 'Standard User';
+};
+
+const getRolesFromPosition = (position: string): string[] => {
+  switch (position) {
+    case 'System Administrator': return ['ADMIN'];
+    case 'Sales Manager': return ['SALES'];
+    case 'Purchase Manager': return ['PURCHASE'];
+    case 'Production Manager': return ['MANUFACTURING'];
+    case 'Inventory Manager': return ['INVENTORY'];
+    default: return ['SALES'];
+  }
+};
+
+interface PermissionRow {
+  field: string;
+  create: string | boolean;
+  view: string | boolean;
+  edit: string | boolean;
+  delete: string | boolean;
+}
+
+const getFieldPermissions = (position: string, module: 'sales' | 'purchase' | 'manufacturing' | 'product'): PermissionRow[] => {
+  const isAdmin = position === 'System Administrator';
+
+  if (module === 'sales') {
+    return [
+      { field: 'Customer', create: true, view: true, edit: true, delete: true },
+      { field: 'Customer Address', create: true, view: true, edit: true, delete: true },
+      { field: 'Sales Person', create: true, view: true, edit: true, delete: true },
+      { field: 'Product', create: true, view: true, edit: true, delete: true },
+      { field: 'Ordered Quantity', create: true, view: true, edit: true, delete: true },
+      { field: 'Delivered Quantity', create: true, view: true, edit: true, delete: true },
+      { field: 'Sales Price', create: true, view: true, edit: true, delete: true },
+      { field: 'Status', create: true, view: true, edit: true, delete: false },
+      { field: 'Total', create: true, view: true, edit: 'Recomputed', delete: 'Recomputed' },
+      { field: 'Creation Date', create: 'Auto Compute', view: true, edit: false, delete: false },
+    ].map(row => {
+      if (!isAdmin && position !== 'Sales Manager') {
+        return {
+          ...row,
+          create: false,
+          edit: false,
+          delete: false,
+          view: position === 'Purchase Manager' || position === 'Production Manager'
+        };
+      }
+      return row;
+    });
+  }
+
+  if (module === 'purchase') {
+    return [
+      { field: 'Vendor', create: true, view: true, edit: true, delete: true },
+      { field: 'Vendor Address', create: true, view: true, edit: true, delete: true },
+      { field: 'Responsible Person', create: true, view: true, edit: true, delete: true },
+      { field: 'Product', create: true, view: true, edit: true, delete: true },
+      { field: 'Ordered Quantity', create: true, view: true, edit: true, delete: true },
+      { field: 'Received Quantity', create: true, view: true, edit: true, delete: true },
+      { field: 'Cost Price', create: true, view: true, edit: true, delete: true },
+      { field: 'Total', create: true, view: true, edit: 'Auto Recomputed', delete: 'Auto Recomputed' },
+      { field: 'Creation Date', create: 'Auto Compute', view: true, edit: false, delete: false },
+    ].map(row => {
+      if (!isAdmin && position !== 'Purchase Manager' && position !== 'Sales Manager') {
+        return {
+          ...row,
+          create: false,
+          edit: false,
+          delete: false,
+          view: position === 'Production Manager'
+        };
+      }
+      return row;
+    });
+  }
+
+  if (module === 'manufacturing') {
+    return [
+      { field: 'Product to Manufacture', create: true, view: true, edit: true, delete: true },
+      { field: 'Product Quantity', create: true, view: true, edit: true, delete: true },
+      { field: 'BoM', create: true, view: true, edit: true, delete: true },
+      { field: 'Responsible Person', create: true, view: true, edit: true, delete: true },
+      { field: 'Finished Quantity', create: true, view: true, edit: true, delete: true },
+      { field: 'Creation Date', create: 'Auto Compute', view: true, edit: false, delete: false },
+    ].map(row => {
+      if (!isAdmin && position !== 'Production Manager' && position !== 'Sales Manager') {
+        return {
+          ...row,
+          create: false,
+          edit: false,
+          delete: false,
+          view: position === 'Purchase Manager'
+        };
+      }
+      return row;
+    });
+  }
+
+  // product module
+  return [
+    { field: 'Product', create: true, view: true, edit: true, delete: true },
+    { field: 'Sales Price', create: true, view: true, edit: true, delete: true },
+    { field: 'Cost Price', create: true, view: true, edit: true, delete: true },
+    { field: 'On Hand Qty', create: true, view: true, edit: false, delete: false },
+    { field: 'Free To Use Qty', create: true, view: true, edit: false, delete: false },
+    { field: 'Procure On Demand', create: 'Not Possible', view: true, edit: true, delete: true },
+    { field: 'Procurement Method', create: 'Not Possible', view: true, edit: true, delete: true },
+    { field: 'Vendor', create: true, view: true, edit: true, delete: true },
+    { field: 'Bill of Materials (BoM)', create: true, view: true, edit: true, delete: true },
+  ].map(row => {
+    if (!isAdmin && position !== 'Sales Manager' && position !== 'Purchase Manager' && position !== 'Production Manager' && position !== 'Inventory Manager') {
+      return {
+        ...row,
+        create: false,
+        edit: false,
+        delete: false,
+        view: false
+      };
+    }
+    return row;
+  });
+};
 
 export default function UsersPage() {
   const toast = useToast();
@@ -21,14 +175,24 @@ export default function UsersPage() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [roles, setRoles] = useState<ManagedRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [showSearchBar, setShowSearchBar] = useState(true);
 
-  // User Form State
+  // User Form State (Simple create/add)
   const [showUserForm, setShowUserForm] = useState(false);
   const [uName, setUName] = useState('');
   const [uEmail, setUEmail] = useState('');
   const [uPassword, setUPassword] = useState('');
   const [uRoles, setURoles] = useState<string[]>([]);
   const [savingUser, setSavingUser] = useState(false);
+
+  // Form View detail modal state (Drawings 2-5)
+  const [selectedUserForDetail, setSelectedUserForDetail] = useState<ManagedUser | null>(null);
+  const [formViewPosition, setFormViewPosition] = useState<string>('Sales Manager');
+  const [activeFormViewTab, setActiveFormViewTab] = useState<'sales' | 'purchase' | 'manufacturing' | 'product' | 'inventory'>('sales');
+  const [backendMatrix, setBackendMatrix] = useState<RoleMatrixResponse | null>(null);
 
   // Edit User State
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -44,11 +208,13 @@ export default function UsersPage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [u, r] = await Promise.all([getUsers(), getRoles()]);
+      const [u, r, m] = await Promise.all([getUsers(), getRoles(), getRoleMatrix()]);
       setUsers(u);
       setRoles(r);
-    } catch {
-      /* swallow */
+      setBackendMatrix(m);
+      setLastSyncTime(new Date());
+    } catch (err) {
+      console.error('Failed to load RBAC configuration', err);
     }
     setLoading(false);
   }, []);
@@ -86,12 +252,24 @@ export default function UsersPage() {
   };
 
   const handleEditClick = (user: ManagedUser) => {
-    setEditingUserId(user.id);
-    setUName(user.name);
-    setUEmail(user.email);
-    setUPassword(''); // leave empty
-    setURoles(user.roles);
-    setShowUserForm(true);
+    setSelectedUserForDetail(user);
+    setFormViewPosition(getPositionFromRoles(user.roles));
+    setActiveFormViewTab('sales');
+  };
+
+  const handleSaveUserPosition = async () => {
+    if (!selectedUserForDetail) return;
+    setSavingUser(true);
+    try {
+      const backendRoles = getRolesFromPosition(formViewPosition);
+      await updateUserRole(selectedUserForDetail.id, backendRoles);
+      toast('User position updated successfully', 'success');
+      setSelectedUserForDetail(null);
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to update position', 'error');
+    }
+    setSavingUser(false);
   };
 
   const handleDeleteUser = async (id: string) => {
@@ -143,58 +321,361 @@ export default function UsersPage() {
     setSavingRole(false);
   };
 
+  const renderMatrixCell = (val: string) => {
+    if (val === '✓') {
+      return (
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-emerald-100 text-emerald-700 text-xs font-bold shadow-sm">
+          ✓
+        </span>
+      );
+    }
+    if (val === '✗') {
+      return (
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-red-100 text-red-700 text-xs font-bold shadow-sm">
+          ✗
+        </span>
+      );
+    }
+    if (val === 'Limited') {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100 uppercase tracking-wider">
+          Limited
+        </span>
+      );
+    }
+    if (val === 'Optional') {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-100 uppercase tracking-wider">
+          Optional
+        </span>
+      );
+    }
+    return <span className="text-gray-400 text-xs">{val}</span>;
+  };
+
+  const renderPermissionCell = (val: string | boolean) => {
+    if (val === true || val === '✓') {
+      return (
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-emerald-100 text-emerald-700 text-xs font-bold shadow-sm">
+          ✓
+        </span>
+      );
+    }
+    if (val === false || val === '✗') {
+      return (
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-red-100 text-red-700 text-xs font-bold shadow-sm">
+          ✗
+        </span>
+      );
+    }
+    let bg = 'bg-gray-100 text-gray-600 border border-gray-200';
+    if (val === 'Recomputed' || val === 'Auto Computed' || val === 'Auto Recomputed' || val === 'Auto Compute') {
+      bg = 'bg-blue-50 text-blue-600 border border-blue-100';
+    } else if (val === 'Not Possible') {
+      bg = 'bg-rose-50 text-rose-600 border border-rose-100';
+    } else if (val === 'Read Only') {
+      bg = 'bg-amber-50 text-amber-600 border border-amber-100';
+    }
+    return (
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${bg}`}>
+        {val}
+      </span>
+    );
+  };
+
+  // Generate initials
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  // Generate a consistent color based on name
+  const getAvatarColor = (name: string) => {
+    const colors = [
+      'bg-blue-100 text-blue-700',
+      'bg-purple-100 text-purple-700',
+      'bg-emerald-100 text-emerald-700',
+      'bg-amber-100 text-amber-700',
+      'bg-rose-100 text-rose-700',
+      'bg-cyan-100 text-cyan-700',
+      'bg-indigo-100 text-indigo-700',
+      'bg-teal-100 text-teal-700',
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  // Format sync time
+  const formatSyncTime = () => {
+    if (!lastSyncTime) return '';
+    const now = new Date();
+    const diffMs = now.getTime() - lastSyncTime.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 5) return 'just now';
+    if (diffSec < 60) return `${diffSec}s ago`;
+    const diffMin = Math.floor(diffSec / 60);
+    return `${diffMin}m ago`;
+  };
+
+  // Role color badge
+  const getRoleBadgeColor = (role: string) => {
+    const map: Record<string, string> = {
+      OWNER: 'bg-amber-50 text-amber-700 border-amber-200',
+      ADMIN: 'bg-red-50 text-red-700 border-red-200',
+      SALES: 'bg-blue-50 text-blue-700 border-blue-200',
+      PURCHASE: 'bg-purple-50 text-purple-700 border-purple-200',
+      MANUFACTURING: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      INVENTORY: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+      INVENTORY_MANAGER: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+      BUSINESS_OWNER: 'bg-amber-50 text-amber-700 border-amber-200',
+    };
+    return map[role] || 'bg-gray-50 text-gray-700 border-gray-200';
+  };
+
+  // Computed stats
+  const totalUsers = users.length;
+  const adminCount = users.filter((u) => u.roles.includes('ADMIN') || u.roles.includes('OWNER')).length;
+  const managerCount = users.filter((u) =>
+    u.roles.includes('SALES') || u.roles.includes('PURCHASE') || u.roles.includes('MANUFACTURING') || u.roles.includes('INVENTORY')
+  ).length;
+  const totalRoles = roles.length;
+
+  // Search filter
+  const filteredUsers = users.filter(
+    (u) =>
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.roles.some((r) => r.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const renderUserKanbanCard = (u: ManagedUser) => {
+    const initials = getInitials(u.name);
+    const avatarColor = getAvatarColor(u.name);
+    const position = getPositionFromRoles(u.roles);
+
+    return (
+      <div
+        key={u.id}
+        className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md hover:border-sky-300 transition-all duration-200 flex flex-col justify-between min-h-[180px] group relative"
+      >
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${avatarColor} flex-shrink-0`}>
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="font-bold text-gray-900 text-sm block leading-tight truncate">
+                {u.name}
+              </span>
+              <span className="text-xs text-gray-500 flex items-center gap-1.5 mt-0.5 truncate font-medium">
+                <Mail size={12} className="text-gray-400 flex-shrink-0" />
+                {u.email}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex gap-1 flex-wrap pt-1.5 border-t border-gray-50">
+            {u.roles.map((r) => (
+              <span
+                key={r}
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${getRoleBadgeColor(r)}`}
+              >
+                {r}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-full">
+            {position}
+          </span>
+          <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <Btn variant="ghost" size="sm" onClick={() => handleEditClick(u)} title="Edit user permissions">
+              <Pencil size={13} />
+            </Btn>
+            <Btn variant="danger" size="sm" onClick={() => handleDeleteUser(u.id)} title="Delete user">
+              <Trash size={13} />
+            </Btn>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Stat cards config
+  const statCards = [
+    {
+      label: 'TOTAL USERS',
+      value: totalUsers,
+      sub: 'Registered accounts',
+      icon: <Users size={18} />,
+      iconBg: 'bg-blue-50 text-blue-500',
+      borderColor: 'border-blue-100',
+    },
+    {
+      label: 'ADMINISTRATORS',
+      value: adminCount,
+      sub: 'Full system access',
+      icon: <ShieldAlert size={18} />,
+      iconBg: 'bg-red-50 text-red-500',
+      borderColor: 'border-red-100',
+    },
+    {
+      label: 'MANAGERS',
+      value: managerCount,
+      sub: 'Department leads',
+      icon: <UserCheck size={18} />,
+      iconBg: 'bg-emerald-50 text-emerald-500',
+      borderColor: 'border-emerald-100',
+    },
+    {
+      label: 'ACTIVE ROLES',
+      value: totalRoles,
+      sub: 'Permission groups',
+      icon: <Lock size={18} />,
+      iconBg: 'bg-violet-50 text-violet-500',
+      borderColor: 'border-violet-100',
+    },
+  ];
+
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Users & Permissions</h2>
-        <Btn variant="ghost" size="sm" onClick={refresh}>
-          <RefreshCw size={14} />
-        </Btn>
+    <div className="space-y-5 animate-fade-in">
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-100">
+            <Shield size={22} className="text-sky-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight">Users & Permissions</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Manage user accounts, role assignments, and access controls.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Btn variant="ghost" size="sm" onClick={refresh}>
+            <RefreshCw size={14} />
+          </Btn>
+        </div>
       </div>
 
-      {/* Sub-tabs toggle */}
-      <div className="flex border-b border-gray-100 mb-4">
-        <button
-          onClick={() => setActiveSubTab('users')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition cursor-pointer ${
-            activeSubTab === 'users' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Users List
-        </button>
-        <button
-          onClick={() => setActiveSubTab('roles')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition cursor-pointer ${
-            activeSubTab === 'roles' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Role Permissions
-        </button>
+      {/* ── Stat Cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {statCards.map((card, idx) => (
+          <div
+            key={card.label}
+            className={`relative overflow-hidden bg-white rounded-xl border ${card.borderColor} p-4 hover:shadow-md transition-all duration-300 group`}
+            style={{ animationDelay: `${idx * 60}ms` }}
+          >
+            <div className="flex items-start justify-between mb-2">
+              <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">{card.label}</p>
+              <div className={`p-1.5 rounded-lg ${card.iconBg} transition-transform duration-300 group-hover:scale-110`}>
+                {card.icon}
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900 tracking-tight">{card.value}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{card.sub}</p>
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-current to-transparent opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
+          </div>
+        ))}
+      </div>
+
+      {/* ── Sub-tabs toggle ── */}
+      <div className="flex items-center justify-between">
+        <div className="flex border-b border-gray-100">
+          <button
+            onClick={() => setActiveSubTab('users')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition cursor-pointer ${
+              activeSubTab === 'users' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <Users size={14} />
+              Users List
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('roles')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition cursor-pointer ${
+              activeSubTab === 'roles' ? 'border-sky-500 text-sky-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <Shield size={14} />
+              Role Permissions
+            </span>
+          </button>
+        </div>
+        {activeSubTab === 'users' && (
+          <div className="flex items-center gap-2">
+            <Btn variant={showSearchBar ? "primary" : "secondary"} size="sm" onClick={() => setShowSearchBar(!showSearchBar)} title="Toggle search bar">
+              <Search size={14} />
+            </Btn>
+            <Btn variant="secondary" size="sm" onClick={() => setViewMode(viewMode === 'list' ? 'kanban' : 'list')} title={viewMode === 'list' ? 'Switch to Kanban' : 'Switch to List'}>
+              {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
+              <span className="ml-1 hidden sm:inline">{viewMode === 'list' ? 'Kanban' : 'List'}</span>
+            </Btn>
+            <Btn size="sm" onClick={() => {
+              setEditingUserId(null);
+              setUName('');
+              setUEmail('');
+              setUPassword('');
+              setURoles([]);
+              setShowUserForm(!showUserForm);
+            }}>
+              <Plus size={14} /> Add User
+            </Btn>
+          </div>
+        )}
       </div>
 
       {activeSubTab === 'users' ? (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <Btn
-              size="sm"
-              onClick={() => {
-                setEditingUserId(null);
-                setUName('');
-                setUEmail('');
-                setUPassword('');
-                setURoles([]);
-                setShowUserForm(!showUserForm);
-              }}
-            >
-              <Plus size={14} /> Add User
-            </Btn>
-          </div>
+          {/* ── Search & Sync Row ── */}
+          {showSearchBar && (
+            <div className="flex items-center justify-between animate-fade-in bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+              <div className="relative w-80">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search users, emails, roles..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition placeholder:text-gray-400 shadow-sm"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Synced {formatSyncTime()} · {filteredUsers.length} of {users.length} users
+              </div>
+            </div>
+          )}
 
+          {/* ── Create Form ── */}
           {showUserForm && (
-            <Card className="p-5 animate-fade-in">
-              <form onSubmit={handleAddUser} className="space-y-4">
+            <Card className="p-5 animate-fade-in border-sky-100">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-1.5 rounded-lg bg-sky-50 text-sky-600">
+                  <Plus size={16} />
+                </div>
                 <h3 className="text-sm font-semibold text-gray-800">{editingUserId ? 'Edit User' : 'Create User'}</h3>
-
+              </div>
+              <form onSubmit={handleAddUser} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Name" value={uName} onChange={(e) => setUName(e.target.value)} required />
                   <Input label="Email" type="email" value={uEmail} onChange={(e) => setUEmail(e.target.value)} required />
@@ -238,59 +719,111 @@ export default function UsersPage() {
             </Card>
           )}
 
+          {/* ── Users Table ── */}
           {loading ? (
-            <div className="flex justify-center py-16">
-              <RefreshCw size={20} className="animate-spin-slow text-sky-500" />
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <RefreshCw size={24} className="animate-spin-slow text-sky-500" />
+              <p className="text-sm text-gray-400">Loading users…</p>
             </div>
-          ) : (
+          ) : users.length === 0 ? (
             <Card>
+              <EmptyState
+                icon={<Users size={20} />}
+                title="No users"
+                description="Add your first user to get started."
+              />
+            </Card>
+          ) : filteredUsers.length === 0 ? (
+            <Card>
+              <EmptyState icon={<Search size={20} />} title="No results" description={`No users match "${searchQuery}"`} />
+            </Card>
+          ) : viewMode === 'list' ? (
+            <Card className="overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
-                      <th className="px-5 py-3">Name</th>
-                      <th className="px-5 py-3">Email</th>
-                      <th className="px-5 py-3">Roles</th>
-                      <th className="px-5 py-3"></th>
+                    <tr className="bg-gradient-to-r from-gray-50/80 to-gray-50/40 text-left text-xs text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">
+                      <th className="px-5 py-3.5">User</th>
+                      <th className="px-5 py-3.5">Email</th>
+                      <th className="px-5 py-3.5">Position</th>
+                      <th className="px-5 py-3.5">Roles</th>
+                      <th className="px-5 py-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {users.map((u) => (
-                      <tr key={u.id} className="hover:bg-sky-50/30 transition">
-                        <td className="px-5 py-3 font-medium text-gray-800">{u.name}</td>
-                        <td className="px-5 py-3 text-gray-600">{u.email}</td>
-                        <td className="px-5 py-3">
-                          <div className="flex gap-1 flex-wrap">
-                            {u.roles.map((r) => (
-                              <span
-                                key={r}
-                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-50 text-sky-700"
+                    {filteredUsers.map((u, idx) => {
+                      const initials = getInitials(u.name);
+                      const avatarColor = getAvatarColor(u.name);
+                      const position = getPositionFromRoles(u.roles);
+
+                      return (
+                        <tr
+                          key={u.id}
+                          className="hover:bg-sky-50/30 transition-colors duration-150 group"
+                          style={{ animationDelay: `${idx * 30}ms` }}
+                        >
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold ${avatarColor} transition-transform duration-200 group-hover:scale-105 flex-shrink-0`}
                               >
-                                {r}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <div className="inline-flex gap-2">
-                            <Btn variant="ghost" size="sm" onClick={() => handleEditClick(u)}>
-                              Edit
-                            </Btn>
-                            <Btn variant="danger" size="sm" onClick={() => handleDeleteUser(u.id)}>
-                              Delete
-                            </Btn>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                                {initials}
+                              </div>
+                              <p className="font-semibold text-gray-900 leading-tight">{u.name}</p>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-3.5">
+                            <span className="text-gray-600 flex items-center gap-1.5">
+                              <Mail size={12} className="text-gray-400" />
+                              {u.email}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-3.5">
+                            <span className="text-xs font-medium text-gray-500 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full">
+                              {position}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-3.5">
+                            <div className="flex gap-1 flex-wrap">
+                              {u.roles.map((r) => (
+                                <span
+                                  key={r}
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getRoleBadgeColor(r)}`}
+                                >
+                                  {r}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-3.5 text-right">
+                            <div className="inline-flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                              <Btn variant="ghost" size="sm" onClick={() => handleEditClick(u)} title="Edit user permissions">
+                                <Pencil size={13} />
+                              </Btn>
+                              <Btn variant="danger" size="sm" onClick={() => handleDeleteUser(u.id)} title="Delete user">
+                                <Trash size={13} />
+                              </Btn>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-fade-in w-full">
+              {filteredUsers.map((u) => renderUserKanbanCard(u))}
+            </div>
           )}
         </div>
       ) : (
-        /* Roles and Permissions Tab */
+        /* ── Roles and Permissions Tab ── */
         <div className="space-y-4">
           <div className="flex items-center gap-4">
             <div className="w-64">
@@ -309,15 +842,21 @@ export default function UsersPage() {
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-16">
-              <RefreshCw size={20} className="animate-spin-slow text-sky-500" />
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <RefreshCw size={24} className="animate-spin-slow text-sky-500" />
+              <p className="text-sm text-gray-400">Loading permissions…</p>
             </div>
           ) : (
             <Card className="p-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                 {ALL_MODULES.map((module) => (
-                  <div key={module} className="border border-gray-100 rounded-xl p-4 bg-gray-50/30 space-y-2">
-                    <p className="text-sm font-semibold text-gray-800 border-b border-gray-100 pb-1.5">{module}</p>
+                  <div key={module} className="border border-gray-100 rounded-xl p-4 bg-gray-50/30 space-y-2 hover:shadow-sm transition-shadow duration-200">
+                    <div className="flex items-center gap-2 border-b border-gray-100 pb-1.5">
+                      <div className="p-1 rounded-md bg-sky-50 text-sky-600">
+                        <Shield size={12} />
+                      </div>
+                      <p className="text-sm font-semibold text-gray-800">{module}</p>
+                    </div>
                     <div className="flex flex-col gap-1.5 pt-1">
                       {ALL_ACTIONS.map((action) => {
                         const checked = isPermissionChecked(module, action);
@@ -345,13 +884,145 @@ export default function UsersPage() {
                 ))}
               </div>
               {(selectedRoleName === 'OWNER' || selectedRoleName === 'ADMIN') && (
-                <p className="text-xs text-amber-600 font-medium mt-4 bg-amber-50 border border-amber-100 rounded-lg p-2.5">
+                <p className="text-xs text-amber-600 font-medium mt-4 bg-amber-50 border border-amber-100 rounded-lg p-2.5 flex items-center gap-2">
+                  <Info size={14} />
                   Note: OWNER and ADMIN roles are pre-configured with full permissions across all modules and cannot be
                   edited.
                 </p>
               )}
             </Card>
           )}
+        </div>
+      )}
+
+      {/* ── User Detail Modal/Overlay ── */}
+      {selectedUserForDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto mx-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50/80 to-gray-50/40">
+              <div className="flex items-center gap-3">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold ${getAvatarColor(selectedUserForDetail.name)}`}>
+                  {getInitials(selectedUserForDetail.name)}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{selectedUserForDetail.name}</h3>
+                  <p className="text-xs text-gray-400 flex items-center gap-1"><Mail size={10} /> {selectedUserForDetail.email}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedUserForDetail(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Contact Card (read-only) */}
+            <div className="px-6 py-4">
+              <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 bg-gray-50/30">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Mail size={14} className="text-gray-400" />
+                    <span className="font-medium">{selectedUserForDetail.email}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <Phone size={14} />
+                    <span className="italic">Not available</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <MapPin size={14} />
+                    <span className="italic">Not available</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Award size={14} className="text-gray-400" />
+                    <span className="font-medium">{getPositionFromRoles(selectedUserForDetail.roles)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Position Selector */}
+            <div className="px-6 pb-4">
+              <div className="flex items-end gap-3">
+                <div className="flex-1 max-w-xs">
+                  <Select label="Position" value={formViewPosition} onChange={(e) => setFormViewPosition(e.target.value)}>
+                    <option value="System Administrator">System Administrator</option>
+                    <option value="Sales Manager">Sales Manager</option>
+                    <option value="Purchase Manager">Purchase Manager</option>
+                    <option value="Production Manager">Production Manager</option>
+                    <option value="Inventory Manager">Inventory Manager</option>
+                  </Select>
+                </div>
+                <Btn size="sm" onClick={handleSaveUserPosition} disabled={savingUser}>
+                  {savingUser ? <RefreshCw size={14} className="animate-spin-slow" /> : <Check size={14} />} Save Position
+                </Btn>
+              </div>
+            </div>
+
+            {/* Module Tabs */}
+            <div className="px-6 border-b border-gray-100">
+              <div className="flex gap-0">
+                {(['sales', 'purchase', 'manufacturing', 'product', 'inventory'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveFormViewTab(tab)}
+                    className={`px-4 py-2.5 text-xs font-medium border-b-2 transition capitalize cursor-pointer ${
+                      activeFormViewTab === tab
+                        ? 'border-sky-500 text-sky-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Permission Grid */}
+            <div className="px-6 py-4">
+              {activeFormViewTab === 'inventory' ? (
+                <div className="text-center py-8">
+                  <div className="p-3 rounded-full bg-cyan-50 text-cyan-500 inline-flex mb-3">
+                    <Shield size={20} />
+                  </div>
+                  <p className="text-sm font-medium text-gray-700">Inventory Permissions</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Inventory permissions are derived from the user&apos;s position and cannot be individually configured.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-gray-50/80 to-gray-50/40 text-left text-xs text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-4 py-3">Field</th>
+                        <th className="px-4 py-3 text-center">Create</th>
+                        <th className="px-4 py-3 text-center">View</th>
+                        <th className="px-4 py-3 text-center">Edit</th>
+                        <th className="px-4 py-3 text-center">Delete</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {getFieldPermissions(formViewPosition, activeFormViewTab).map((row, idx) => (
+                        <tr key={row.field} className="hover:bg-sky-50/30 transition-colors duration-150" style={{ animationDelay: `${idx * 20}ms` }}>
+                          <td className="px-4 py-2.5 font-medium text-gray-800 text-xs">{row.field}</td>
+                          <td className="px-4 py-2.5 text-center">{renderPermissionCell(row.create)}</td>
+                          <td className="px-4 py-2.5 text-center">{renderPermissionCell(row.view)}</td>
+                          <td className="px-4 py-2.5 text-center">{renderPermissionCell(row.edit)}</td>
+                          <td className="px-4 py-2.5 text-center">{renderPermissionCell(row.delete)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-2 rounded-b-2xl">
+              <Btn variant="secondary" onClick={() => setSelectedUserForDetail(null)}>
+                Close
+              </Btn>
+            </div>
+          </div>
         </div>
       )}
     </div>
