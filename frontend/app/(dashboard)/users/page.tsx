@@ -227,8 +227,6 @@ export default function UsersPage() {
   const [savingOverrides, setSavingOverrides] = useState(false);
   const [hasOverrideChanges, setHasOverrideChanges] = useState(false);
 
-  // Edit User State
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
 
   // Role Mappings State
   const [selectedRoleName, setSelectedRoleName] = useState<string>('SALES');
