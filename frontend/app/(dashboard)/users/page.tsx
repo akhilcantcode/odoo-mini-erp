@@ -12,7 +12,11 @@ import {
   ManagedRole,
   getRoleMatrix,
   updateUserRole,
-  RoleMatrixResponse
+  RoleMatrixResponse,
+  getUserOverrides,
+  setUserOverrides,
+  resetUserOverrides,
+  UserPermissionOverride,
 } from '../../../services/auth';
 import { useToast } from '../layout';
 import { Btn, Card, Input, Select, EmptyState } from '../../../components/ui';
@@ -194,6 +198,14 @@ export default function UsersPage() {
   const [activeFormViewTab, setActiveFormViewTab] = useState<'sales' | 'purchase' | 'manufacturing' | 'product' | 'inventory'>('sales');
   const [backendMatrix, setBackendMatrix] = useState<RoleMatrixResponse | null>(null);
 
+  // Per-user permission overrides
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [userOverrides, setUserOverrides_State] = useState<UserPermissionOverride[]>([]);
+  const [pendingOverrides, setPendingOverrides] = useState<UserPermissionOverride[]>([]);
+  const [loadingOverrides, setLoadingOverrides] = useState(false);
+  const [savingOverrides, setSavingOverrides] = useState(false);
+  const [hasOverrideChanges, setHasOverrideChanges] = useState(false);
+
   // Edit User State
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
 
@@ -255,6 +267,84 @@ export default function UsersPage() {
     setSelectedUserForDetail(user);
     setFormViewPosition(getPositionFromRoles(user.roles));
     setActiveFormViewTab('sales');
+    setUserOverrides_State([]);
+    setPendingOverrides([]);
+    setHasOverrideChanges(false);
+    // Load existing overrides for this user
+    setLoadingOverrides(true);
+    getUserOverrides(user.id)
+      .then((data) => {
+        setUserOverrides_State(data);
+        setPendingOverrides(data);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingOverrides(false));
+  };
+
+  const getOverrideForCell = (module: string, field: string, action: string): UserPermissionOverride | undefined => {
+    return pendingOverrides.find(
+      (o) => o.module === module && o.field.toLowerCase() === field.toLowerCase() && o.action === action
+    );
+  };
+
+  const isSystemField = (val: string | boolean): boolean => {
+    if (typeof val === 'boolean') return false;
+    const locked = ['Auto Compute', 'Auto Computed', 'Auto Recomputed', 'Recomputed', 'Not Possible', 'Read Only'];
+    return locked.includes(val);
+  };
+
+  const handleToggleOverride = (module: string, field: string, action: string, currentVal: string | boolean) => {
+    // Determine the role-default value for this cell
+    const roleDefault = currentVal === true || currentVal === '✓';
+    // Check if there's already a pending override
+    const existingIdx = pendingOverrides.findIndex(
+      (o) => o.module === module && o.field.toLowerCase() === field.toLowerCase() && o.action === action
+    );
+    const currentEffective = existingIdx >= 0 ? pendingOverrides[existingIdx].allowed : roleDefault;
+    const newAllowed = !currentEffective;
+    let newOverrides: UserPermissionOverride[];
+    if (existingIdx >= 0) {
+      // Update existing pending override
+      newOverrides = pendingOverrides.map((o, i) =>
+        i === existingIdx ? { ...o, allowed: newAllowed } : o
+      );
+    } else {
+      // Add new pending override
+      newOverrides = [...pendingOverrides, { module, field, action, allowed: newAllowed }];
+    }
+    setPendingOverrides(newOverrides);
+    setHasOverrideChanges(true);
+  };
+
+  const handleSaveOverrides = async () => {
+    if (!selectedUserForDetail) return;
+    setSavingOverrides(true);
+    try {
+      const saved = await setUserOverrides(selectedUserForDetail.id, pendingOverrides);
+      setUserOverrides_State(saved);
+      setPendingOverrides(saved);
+      setHasOverrideChanges(false);
+      toast('Permissions saved successfully', 'success');
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to save permissions', 'error');
+    }
+    setSavingOverrides(false);
+  };
+
+  const handleResetOverrides = async () => {
+    if (!selectedUserForDetail) return;
+    if (!confirm('Reset all custom permissions to role defaults?')) return;
+    setSavingOverrides(true);
+    try {
+      await resetUserOverrides(selectedUserForDetail.id);
+      setUserOverrides_State([]);
+      setPendingOverrides([]);
+      setHasOverrideChanges(false);
+      toast('Permissions reset to role defaults', 'success');
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to reset permissions', 'error');
+    }
+    setSavingOverrides(false);
   };
 
   const handleSaveUserPosition = async () => {
@@ -547,8 +637,9 @@ export default function UsersPage() {
   ];
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* ── Header ── */}
+    <>
+      <div className="space-y-5 animate-fade-in">
+        {/* ── Header ── */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-100">
@@ -558,11 +649,6 @@ export default function UsersPage() {
             <h2 className="text-xl font-bold text-gray-900 tracking-tight">Users & Permissions</h2>
             <p className="text-xs text-gray-400 mt-0.5">Manage user accounts, role assignments, and access controls.</p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Btn variant="ghost" size="sm" onClick={refresh}>
-            <RefreshCw size={14} />
-          </Btn>
         </div>
       </div>
 
@@ -894,6 +980,7 @@ export default function UsersPage() {
           )}
         </div>
       )}
+      </div>
 
       {/* ── User Detail Modal/Overlay ── */}
       {selectedUserForDetail && (
@@ -978,7 +1065,12 @@ export default function UsersPage() {
 
             {/* Permission Grid */}
             <div className="px-6 py-4">
-              {activeFormViewTab === 'inventory' ? (
+              {loadingOverrides ? (
+                <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
+                  <RefreshCw size={16} className="animate-spin-slow" />
+                  <span className="text-sm">Loading permissions…</span>
+                </div>
+              ) : activeFormViewTab === 'inventory' ? (
                 <div className="text-center py-8">
                   <div className="p-3 rounded-full bg-cyan-50 text-cyan-500 inline-flex mb-3">
                     <Shield size={20} />
@@ -990,6 +1082,10 @@ export default function UsersPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
+                  <div className="flex items-center gap-2 mb-3 text-[11px] text-gray-400">
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> Blue dot = overridden from role default</span>
+                    <span className="ml-3 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300 inline-block" /> Greyed = system-computed, not editable</span>
+                  </div>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gradient-to-r from-gray-50/80 to-gray-50/40 text-left text-xs text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">
@@ -1001,15 +1097,45 @@ export default function UsersPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {getFieldPermissions(formViewPosition, activeFormViewTab).map((row, idx) => (
-                        <tr key={row.field} className="hover:bg-sky-50/30 transition-colors duration-150" style={{ animationDelay: `${idx * 20}ms` }}>
-                          <td className="px-4 py-2.5 font-medium text-gray-800 text-xs">{row.field}</td>
-                          <td className="px-4 py-2.5 text-center">{renderPermissionCell(row.create)}</td>
-                          <td className="px-4 py-2.5 text-center">{renderPermissionCell(row.view)}</td>
-                          <td className="px-4 py-2.5 text-center">{renderPermissionCell(row.edit)}</td>
-                          <td className="px-4 py-2.5 text-center">{renderPermissionCell(row.delete)}</td>
-                        </tr>
-                      ))}
+                      {getFieldPermissions(formViewPosition, activeFormViewTab).map((row, idx) => {
+                        const renderEditableCell = (action: 'create' | 'view' | 'edit' | 'delete', val: string | boolean) => {
+                          const isLocked = isSystemField(val);
+                          const override = getOverrideForCell(activeFormViewTab, row.field, action);
+                          const hasOverride = override !== undefined;
+                          const effectiveAllowed = hasOverride ? override.allowed : (val === true || val === '✓');
+
+                          if (isLocked) {
+                            return renderPermissionCell(val);
+                          }
+
+                          return (
+                            <button
+                              title={hasOverride ? `Override active — click to toggle (role default: ${val === true || val === '✓' ? 'allowed' : 'denied'})` : 'Click to override'}
+                              onClick={() => handleToggleOverride(activeFormViewTab, row.field, action, val)}
+                              className="relative inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-150 hover:scale-110 cursor-pointer"
+                            >
+                              {hasOverride && (
+                                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-blue-500 border border-white z-10" />
+                              )}
+                              {effectiveAllowed ? (
+                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded ${hasOverride ? 'bg-emerald-200 ring-2 ring-emerald-400' : 'bg-emerald-100'} text-emerald-700 text-xs font-bold shadow-sm`}>✓</span>
+                              ) : (
+                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded ${hasOverride ? 'bg-red-200 ring-2 ring-red-400' : 'bg-red-100'} text-red-700 text-xs font-bold shadow-sm`}>✗</span>
+                              )}
+                            </button>
+                          );
+                        };
+
+                        return (
+                          <tr key={row.field} className="hover:bg-sky-50/30 transition-colors duration-150" style={{ animationDelay: `${idx * 20}ms` }}>
+                            <td className="px-4 py-2.5 font-medium text-gray-800 text-xs">{row.field}</td>
+                            <td className="px-4 py-2.5 text-center">{renderEditableCell('create', row.create)}</td>
+                            <td className="px-4 py-2.5 text-center">{renderEditableCell('view', row.view)}</td>
+                            <td className="px-4 py-2.5 text-center">{renderEditableCell('edit', row.edit)}</td>
+                            <td className="px-4 py-2.5 text-center">{renderEditableCell('delete', row.delete)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1017,14 +1143,41 @@ export default function UsersPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-2 rounded-b-2xl">
-              <Btn variant="secondary" onClick={() => setSelectedUserForDetail(null)}>
-                Close
-              </Btn>
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between gap-2 rounded-b-2xl">
+              <div className="flex items-center gap-2">
+                {pendingOverrides.length > 0 && (
+                  <button
+                    onClick={handleResetOverrides}
+                    disabled={savingOverrides}
+                    className="text-xs text-rose-500 hover:text-rose-700 hover:underline cursor-pointer disabled:opacity-50 flex items-center gap-1 transition"
+                  >
+                    <RefreshCw size={11} />
+                    Reset to Role Defaults ({pendingOverrides.length} override{pendingOverrides.length !== 1 ? 's' : ''})
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {hasOverrideChanges && (
+                  <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                    Unsaved changes
+                  </span>
+                )}
+                <Btn variant="secondary" size="sm" onClick={() => setSelectedUserForDetail(null)}>
+                  Cancel
+                </Btn>
+                <Btn
+                  size="sm"
+                  onClick={handleSaveOverrides}
+                  disabled={savingOverrides || !hasOverrideChanges}
+                >
+                  {savingOverrides ? <RefreshCw size={13} className="animate-spin-slow" /> : <Check size={13} />}
+                  Save Permissions
+                </Btn>
+              </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

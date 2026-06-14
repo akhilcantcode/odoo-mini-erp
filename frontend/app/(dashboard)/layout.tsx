@@ -12,6 +12,9 @@ import {
   Settings2, Users, ScrollText, User, LogOut, RefreshCw
 } from 'lucide-react';
 
+import { hasModuleViewPermission } from '../../utils/permissions';
+import { getUserOverrides } from '../../services/auth';
+
 type TabKey = 'dashboard' | 'products' | 'inventory' | 'sales' | 'purchases' | 'manufacturing' | 'bom' | 'users' | 'audit';
 
 const TABS: { key: TabKey; path: string; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
@@ -32,7 +35,7 @@ const ToastContext = createContext<ToastContextType>(() => {});
 export const useToast = () => useContext(ToastContext);
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, token, logout } = useAuthStore();
+  const { user, token, logout, overrides, setOverrides } = useAuthStore();
   const [toastData, setToastData] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const pathname = usePathname();
@@ -46,9 +49,50 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setHydrated(true);
   }, []);
 
+  // Fetch permission overrides on mount/auth change
+  useEffect(() => {
+    if (user && token) {
+      getUserOverrides(user.id)
+        .then((data) => {
+          setOverrides(data);
+        })
+        .catch((err) => {
+          console.error('Failed to load user permission overrides', err);
+        });
+    }
+  }, [user, token, setOverrides]);
+
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
     setToastData({ message, type });
   }, []);
+
+  const isTabAllowed = (key: TabKey, roles: string[] | undefined): boolean => {
+    if (!roles) return false;
+    const isAdmin = roles.some(r => r === 'OWNER' || r === 'ADMIN');
+    if (isAdmin) return true;
+
+    switch (key) {
+      case 'dashboard':
+        return true;
+      case 'products':
+        return hasModuleViewPermission(roles, 'product', overrides);
+      case 'inventory':
+        return hasModuleViewPermission(roles, 'inventory', overrides);
+      case 'sales':
+        return hasModuleViewPermission(roles, 'sales', overrides);
+      case 'purchases':
+        return hasModuleViewPermission(roles, 'purchase', overrides);
+      case 'manufacturing':
+      case 'bom':
+        return hasModuleViewPermission(roles, 'manufacturing', overrides);
+      case 'users':
+      case 'audit':
+        return false;
+      default:
+        return false;
+    }
+  };
+
 
   if (!hydrated) {
     return (
@@ -95,7 +139,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Nav Links */}
           <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-            {TABS.filter(tab => !tab.adminOnly || user?.roles?.some(r => r === 'OWNER' || r === 'ADMIN')).map(tab => {
+            {TABS.filter(tab => isTabAllowed(tab.key, user?.roles)).map(tab => {
               const active = isActive(tab.path);
               return (
                 <Link

@@ -1,6 +1,6 @@
 import { prisma } from '../../config/prisma';
 import { CreateManufacturingOrderInput } from './manufacturing.types';
-import { Prisma, ManufacturingStatus } from '@prisma/client';
+import { Prisma, ManufacturingStatus, ReservationSourceType } from '@prisma/client';
 
 export class ManufacturingRepository {
   /**
@@ -164,6 +164,33 @@ export class ManufacturingRepository {
         },
         workOrders: true,
       },
+    });
+  }
+
+  /**
+   * Delete a manufacturing order and all of its items, work orders, and reservation records in a transaction.
+   */
+  async delete(id: string, companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      const mo = await tx.manufacturingOrder.findFirst({
+        where: { id, companyId },
+      });
+      if (!mo) {
+        throw new Error('Manufacturing order not found');
+      }
+
+      await tx.manufacturingOrderItem.deleteMany({
+        where: { manufacturingOrderId: id },
+      });
+      await tx.manufacturingWorkOrder.deleteMany({
+        where: { manufacturingOrderId: id },
+      });
+      await tx.reservation.deleteMany({
+        where: { sourceId: id, sourceType: ReservationSourceType.manufacturing },
+      });
+      return tx.manufacturingOrder.delete({
+        where: { id },
+      });
     });
   }
 }

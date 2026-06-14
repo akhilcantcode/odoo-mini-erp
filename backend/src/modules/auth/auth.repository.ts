@@ -410,4 +410,64 @@ export class AuthRepository {
       };
     });
   }
+
+  /**
+   * Find all per-user permission overrides for a user.
+   */
+  async findUserOverrides(companyId: string, userId: string) {
+    return prisma.userPermissionOverride.findMany({
+      where: { userId, companyId },
+      select: { module: true, field: true, action: true, allowed: true },
+    });
+  }
+
+  /**
+   * Batch upsert per-user permission overrides.
+   * Uses transaction to delete existing overrides for changed fields then re-insert.
+   */
+  async upsertUserOverrides(
+    companyId: string,
+    userId: string,
+    overrides: { module: string; field: string; action: string; allowed: boolean }[]
+  ) {
+    return prisma.$transaction(async (tx) => {
+      for (const override of overrides) {
+        await tx.userPermissionOverride.upsert({
+          where: {
+            userId_module_field_action: {
+              userId,
+              module: override.module,
+              field: override.field,
+              action: override.action,
+            },
+          },
+          create: {
+            userId,
+            module: override.module,
+            field: override.field,
+            action: override.action,
+            allowed: override.allowed,
+            companyId,
+          },
+          update: {
+            allowed: override.allowed,
+          },
+        });
+      }
+
+      return tx.userPermissionOverride.findMany({
+        where: { userId, companyId },
+        select: { module: true, field: true, action: true, allowed: true },
+      });
+    });
+  }
+
+  /**
+   * Delete all per-user permission overrides (reset to role defaults).
+   */
+  async deleteUserOverrides(companyId: string, userId: string) {
+    return prisma.userPermissionOverride.deleteMany({
+      where: { userId, companyId },
+    });
+  }
 }

@@ -2,17 +2,28 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getProducts, getBom, setBom } from '../../../features/product/services';
+import { getProducts, getBom, setBom, deleteBom } from '../../../features/product/services';
 import type { Product, BoMItem } from '../../../features/product/types';
 import { useToast } from '../layout';
-import { Btn, Card, Input, Select, EmptyState, StatusBadge } from '../../../components/ui';
+import { Btn, Card, Input, Select, EmptyState, StatusBadge, AccessDenied } from '../../../components/ui';
 import {
   Settings2, RefreshCw, X, Plus, Trash2, ArrowLeft, Save, ScrollText, Search, Cpu, Layers, Activity
 } from 'lucide-react';
+import { useAuthStore } from '../../../store/authStore';
+import { hasFieldPermission, hasModuleViewPermission } from '../../../utils/permissions';
 
 export default function BomPage() {
+  const { user, overrides } = useAuthStore();
   const toast = useToast();
   const router = useRouter();
+
+  if (!hasModuleViewPermission(user?.roles, 'manufacturing', overrides)) {
+    return <AccessDenied module="Bills of Materials" />;
+  }
+
+  const canCreate = hasFieldPermission(user?.roles, 'manufacturing', 'BoM', 'create', overrides);
+  const canEdit = hasFieldPermission(user?.roles, 'manufacturing', 'BoM', 'edit', overrides);
+  const canDelete = hasFieldPermission(user?.roles, 'manufacturing', 'BoM', 'delete', overrides);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +51,9 @@ export default function BomPage() {
   const [activeTab, setActiveTab] = useState<'components' | 'workOrders'>('components');
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const isNew = !bomSequenceId;
+  const hasPermission = isNew ? canCreate : canEdit;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -191,18 +205,13 @@ export default function BomPage() {
   };
 
   const handleClearBom = async (productId: string) => {
-    if (!confirm('Are you sure you want to clear this Bill of Materials?')) return;
+    if (!confirm('Are you sure you want to delete this Bill of Materials?')) return;
     try {
-      await setBom(productId, {
-        quantity: 1.0,
-        reference: null,
-        items: [],
-        operations: [],
-      });
-      toast('BoM cleared', 'success');
+      await deleteBom(productId);
+      toast('BoM deleted successfully', 'success');
       refresh();
     } catch (err: unknown) {
-      toast(err instanceof Error ? err.message : 'Failed to clear BoM', 'error');
+      toast(err instanceof Error ? err.message : 'Failed to delete BoM', 'error');
     }
   };
 
@@ -223,7 +232,7 @@ export default function BomPage() {
             <Btn variant="secondary" size="sm" onClick={() => setIsEditing(false)}>
               <ArrowLeft size={14} className="mr-1 inline" /> Back
             </Btn>
-            <Btn variant="primary" size="sm" onClick={handleSave} disabled={saving || bomLoading}>
+            <Btn variant="primary" size="sm" onClick={handleSave} disabled={saving || bomLoading || !hasPermission}>
               {saving ? <RefreshCw size={14} className="animate-spin-slow mr-1 inline" /> : <Save size={14} className="mr-1 inline" />}
               Save
             </Btn>
@@ -268,11 +277,11 @@ export default function BomPage() {
                   ) : (
                     // New mode: dropdown
                     <Select
+                      label="Manufactured Product"
                       value={selectedProductId}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                        setSelectedProductId(e.target.value)
-                      }
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedProductId(e.target.value)}
                       required
+                      disabled={!isNew || !hasPermission}
                     >
                       <option value="">Select manufactured product...</option>
                       {availableFinishedProducts.map((p) => (
@@ -295,6 +304,7 @@ export default function BomPage() {
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value)}
                       required
+                      disabled={!hasPermission}
                     />
                   </div>
                   <div className="bg-gray-50 border border-gray-200 text-gray-400 font-semibold px-3 py-2.5 rounded-lg text-xs self-end mb-0.5">
@@ -312,6 +322,7 @@ export default function BomPage() {
                     value={reference}
                     onChange={(e) => setReference(e.target.value.slice(0, 8))}
                     maxLength={8}
+                    disabled={!hasPermission}
                   />
                   <p className="text-[10px] text-gray-400 mt-1">
                     Max 8 characters ({reference.length}/8)
@@ -376,6 +387,7 @@ export default function BomPage() {
                                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                                     updateComponentRow(idx, 'componentId', e.target.value)
                                   }
+                                  disabled={!hasPermission}
                                 >
                                   <option value="">Select component...</option>
                                   {products
@@ -395,6 +407,7 @@ export default function BomPage() {
                                   value={row.quantity}
                                   onChange={(e) => updateComponentRow(idx, 'quantity', e.target.value)}
                                   className="text-center"
+                                  disabled={!hasPermission}
                                 />
                               </td>
                               <td className="px-5 py-2 text-center text-gray-400 text-xs font-semibold">
@@ -404,7 +417,8 @@ export default function BomPage() {
                                 <button
                                   type="button"
                                   onClick={() => removeComponentRow(idx)}
-                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-50 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                  disabled={!hasPermission}
                                 >
                                   <X size={15} />
                                 </button>
@@ -418,7 +432,8 @@ export default function BomPage() {
                   <button
                     type="button"
                     onClick={addComponentRow}
-                    className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-800 text-xs font-semibold mt-2 px-2 py-1 hover:bg-sky-50 rounded-lg transition"
+                    className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-800 disabled:text-gray-400 disabled:hover:bg-transparent text-xs font-semibold mt-2 px-2 py-1 hover:bg-sky-50 rounded-lg transition disabled:cursor-not-allowed"
+                    disabled={!hasPermission}
                   >
                     <Plus size={14} /> Add a product
                   </button>
@@ -452,6 +467,7 @@ export default function BomPage() {
                                   onChange={(e) =>
                                     updateOperationRow(idx, 'operationName', e.target.value)
                                   }
+                                  disabled={!hasPermission}
                                 />
                               </td>
                               <td className="px-5 py-2">
@@ -461,6 +477,7 @@ export default function BomPage() {
                                   onChange={(e) =>
                                     updateOperationRow(idx, 'workCenterName', e.target.value)
                                   }
+                                  disabled={!hasPermission}
                                 />
                               </td>
                               <td className="px-5 py-2 text-center w-36">
@@ -473,13 +490,15 @@ export default function BomPage() {
                                     updateOperationRow(idx, 'plannedDuration', e.target.value)
                                   }
                                   className="text-center font-mono"
+                                  disabled={!hasPermission}
                                 />
                               </td>
                               <td className="px-5 py-2 text-right">
                                 <button
                                   type="button"
                                   onClick={() => removeOperationRow(idx)}
-                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-50 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                  disabled={!hasPermission}
                                 >
                                   <X size={15} />
                                 </button>
@@ -493,7 +512,8 @@ export default function BomPage() {
                   <button
                     type="button"
                     onClick={addOperationRow}
-                    className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-800 text-xs font-semibold mt-2 px-2 py-1 hover:bg-sky-50 rounded-lg transition"
+                    className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-800 disabled:text-gray-400 disabled:hover:bg-transparent text-xs font-semibold mt-2 px-2 py-1 hover:bg-sky-50 rounded-lg transition disabled:cursor-not-allowed"
+                    disabled={!hasPermission}
                   >
                     <Plus size={14} /> Add a line
                   </button>
@@ -602,10 +622,7 @@ export default function BomPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Btn variant="ghost" size="sm" onClick={refresh}>
-            <RefreshCw size={14} />
-          </Btn>
-          <Btn size="sm" onClick={handleNewBom}>
+          <Btn size="sm" onClick={handleNewBom} disabled={!canCreate}>
             <Plus size={14} /> New BoM
           </Btn>
         </div>
@@ -766,7 +783,8 @@ export default function BomPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleClearBom(p.id)}
-                              className="text-red-500 hover:text-red-700"
+                              className="text-red-500 hover:text-red-700 font-semibold"
+                              disabled={!canDelete}
                             >
                               Clear
                             </Btn>

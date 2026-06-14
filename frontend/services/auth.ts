@@ -125,3 +125,29 @@ export async function updateUserRole(
   });
 }
 
+export interface UserPermissionOverride {
+  module: string;
+  field: string;
+  action: string;
+  allowed: boolean;
+}
+
+export async function getUserOverrides(userId: string): Promise<UserPermissionOverride[]> {
+  return fetchApi(`/auth/users/${userId}/overrides`);
+}
+
+export async function setUserOverrides(
+  userId: string,
+  overrides: UserPermissionOverride[]
+): Promise<UserPermissionOverride[]> {
+  return fetchApi(`/auth/users/${userId}/overrides`, {
+    method: 'PUT',
+    body: JSON.stringify({ overrides }),
+  });
+}
+
+export async function resetUserOverrides(userId: string): Promise<{ message: string }> {
+  return fetchApi(`/auth/users/${userId}/overrides`, {
+    method: 'DELETE',
+  });
+}

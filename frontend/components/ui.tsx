@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, X, ShieldAlert } from 'lucide-react';
 
 export function StatusBadge({ status }: { status: string }) {
   const colorMap: Record<string, string> = {
@@ -121,3 +121,18 @@ export function Toast({ message, type, onClose }: { message: string; type: 'succ
     </div>
   );
 }
+
+export function AccessDenied({ module }: { module: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
+      <div className="p-4 rounded-2xl bg-red-50 text-red-500 mb-4 border border-red-100 shadow-sm animate-pulse">
+        <ShieldAlert size={32} />
+      </div>
+      <h3 className="text-lg font-bold text-gray-900">Access Denied</h3>
+      <p className="text-sm text-gray-500 mt-2 max-w-sm">
+        You do not have sufficient privileges to view the <strong>{module}</strong> module. Please contact your administrator if you believe this is an error.
+      </p>
+    </div>
+  );
+}
+

@@ -173,4 +173,25 @@ export class PurchaseRepository {
       return updatedPo;
     });
   }
+
+  /**
+   * Delete a purchase order and its items in a transaction.
+   */
+  async delete(id: string, companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.purchaseOrder.findFirst({
+        where: { id, companyId },
+      });
+      if (!order) {
+        throw new Error('Purchase order not found');
+      }
+
+      await tx.purchaseOrderItem.deleteMany({
+        where: { orderId: id },
+      });
+      return tx.purchaseOrder.delete({
+        where: { id },
+      });
+    });
+  }
 }

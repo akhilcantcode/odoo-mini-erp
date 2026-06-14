@@ -250,4 +250,86 @@ export class ProductRepository {
       }
     });
   }
+
+  /**
+   * Delete a product and all of its associated inventory, ledger, reservations, and BoM if not in use.
+   */
+  async delete(id: string, companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      const product = await tx.product.findFirst({
+        where: { id, companyId },
+      });
+      if (!product) {
+        throw new Error('Product not found');
+      }
+
+      // Check if referenced in transactional tables
+      const soItemsCount = await tx.salesOrderItem.count({ where: { productId: id } });
+      const poItemsCount = await tx.purchaseOrderItem.count({ where: { productId: id } });
+      const moCount = await tx.manufacturingOrder.count({ where: { productId: id } });
+      if (soItemsCount > 0 || poItemsCount > 0 || moCount > 0) {
+        throw new Error('Cannot delete product because it is referenced in active sales, purchase, or manufacturing transactions.');
+      }
+
+      // Clean up dependencies
+      await tx.reservation.deleteMany({ where: { productId: id } });
+      await tx.boMItem.deleteMany({ where: { componentId: id } });
+      await tx.boMItem.deleteMany({ where: { bom: { productId: id } } });
+      await tx.boMOperation.deleteMany({ where: { bom: { productId: id } } });
+      await tx.boM.deleteMany({ where: { productId: id } });
+      await tx.stockLedger.deleteMany({ where: { productId: id } });
+      await tx.inventory.deleteMany({ where: { productId: id } });
+      return tx.product.delete({ where: { id } });
+    });
+  }
+
+  /**
+   * Delete the Bill of Materials for a product.
+   */
+  async deleteBom(productId: string, companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      const bom = await tx.boM.findFirst({
+        where: { productId, companyId },
+      });
+      if (!bom) {
+        throw new Error('Bill of Materials not found for this product');
+      }
+      await tx.boMItem.deleteMany({ where: { bomId: bom.id } });
+      await tx.boMOperation.deleteMany({ where: { bomId: bom.id } });
+      return tx.boM.delete({ where: { id: bom.id } });
+    });
+  }
+
+  /**
+   * Import multiple products and create empty inventory rows for them.
+   */
+  async importMany(products: CreateProductInput[], companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      let count = 0;
+      for (const p of products) {
+        const product = await tx.product.create({
+          data: {
+            name: p.name,
+            salesPrice: p.salesPrice,
+            costPrice: p.costPrice,
+            procurementType: p.procurementType,
+            procureOnDemand: p.procureOnDemand ?? false,
+            companyId,
+          },
+        });
+
+        await tx.inventory.create({
+          data: {
+            productId: product.id,
+            onHandQty: 0,
+            reservedQty: 0,
+            companyId,
+          },
+        });
+        count++;
+      }
+      return { count };
+    });
+  }
 }
+

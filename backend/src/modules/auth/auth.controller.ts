@@ -217,4 +217,56 @@ export class AuthController {
         .json({ message: error.message || 'Failed to update role permissions' });
     }
   };
+
+  /**
+   * GET /users/:id/overrides
+   * Fetch per-user field-level permission overrides.
+   */
+  getUserOverrides = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return res.status(401).json({ message: 'Not authenticated' });
+      const { id } = req.params;
+      const result = await this.service.getUserOverrides(req.user.companyId, id);
+      return res.status(200).json(result);
+    } catch (error: any) {
+      return res.status(500).json({ message: error.message || 'Failed to retrieve overrides' });
+    }
+  };
+
+  /**
+   * PUT /users/:id/overrides
+   * Save/update per-user field-level permission overrides.
+   */
+  setUserOverrides = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return res.status(401).json({ message: 'Not authenticated' });
+      const { id } = req.params;
+      const { overrides } = req.body;
+      if (!overrides || !Array.isArray(overrides)) {
+        return res.status(400).json({ message: 'overrides array is required' });
+      }
+      const result = await this.service.setUserOverrides(req.user.companyId, id, overrides);
+      invalidateUserCache(id);
+      return res.status(200).json(result);
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message || 'Failed to save overrides' });
+    }
+  };
+
+  /**
+   * DELETE /users/:id/overrides
+   * Reset all per-user overrides to role defaults.
+   */
+  resetUserOverrides = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return res.status(401).json({ message: 'Not authenticated' });
+      const { id } = req.params;
+      await this.service.resetUserOverrides(req.user.companyId, id);
+      invalidateUserCache(id);
+      return res.status(200).json({ message: 'Overrides reset to role defaults' });
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message || 'Failed to reset overrides' });
+    }
+  };
 }
+

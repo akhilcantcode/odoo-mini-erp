@@ -54,3 +54,9 @@ export async function deliverSalesOrder(id: string): Promise<SalesOrder> {
     method: 'POST',
   });
 }
+
+export async function deleteSalesOrder(id: string): Promise<{ message: string }> {
+  return fetchApi(`/sales/${id}`, {
+    method: 'DELETE',
+  });
+}

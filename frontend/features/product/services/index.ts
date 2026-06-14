@@ -68,3 +68,29 @@ export async function setBom(
   });
 }
 
+export async function deleteProduct(id: string): Promise<{ message: string }> {
+  return fetchApi(`/products/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function deleteBom(productId: string): Promise<{ message: string }> {
+  return fetchApi(`/products/${productId}/bom`, {
+    method: 'DELETE',
+  });
+}
+
+export async function importProducts(products: {
+  name: string;
+  salesPrice?: number | null;
+  costPrice?: number | null;
+  procurementType: 'purchase' | 'manufacture';
+  procureOnDemand?: boolean;
+}[]): Promise<{ count: number }> {
+  return fetchApi('/products/import', {
+    method: 'POST',
+    body: JSON.stringify({ products }),
+  });
+}
+
+

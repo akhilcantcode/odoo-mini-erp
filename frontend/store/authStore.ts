@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 
+export interface UserPermissionOverride {
+  module: string;
+  field: string;
+  action: string;
+  allowed: boolean;
+}
+
 interface UserProfile {
   id: string;
   name: string;
@@ -10,8 +17,10 @@ interface AuthState {
   user: UserProfile | null;
   token: string | null;
   refreshToken: string | null;
+  overrides: UserPermissionOverride[];
   setAuth: (user: UserProfile | null, token: string | null, refreshToken?: string | null) => void;
   setToken: (token: string) => void; // silent access-token update after refresh
+  setOverrides: (overrides: UserPermissionOverride[]) => void;
   logout: () => void;
 }
 
@@ -35,10 +44,23 @@ const getInitialUser = (): UserProfile | null => {
   return null;
 };
 
+const getInitialOverrides = (): UserPermissionOverride[] => {
+  const overridesStr = getLocalStorageItem('erp_overrides');
+  if (overridesStr) {
+    try {
+      return JSON.parse(overridesStr) as UserPermissionOverride[];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: getInitialUser(),
   token: getLocalStorageItem('erp_token'),
   refreshToken: getLocalStorageItem('erp_refresh_token'),
+  overrides: getInitialOverrides(),
 
   setAuth: (user, token, refreshToken = null) => {
     if (typeof window !== 'undefined') {
@@ -72,12 +94,21 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ token });
   },
 
+  setOverrides: (overrides: UserPermissionOverride[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('erp_overrides', JSON.stringify(overrides));
+    }
+    set({ overrides });
+  },
+
   logout: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('erp_token');
       localStorage.removeItem('erp_refresh_token');
       localStorage.removeItem('erp_user');
+      localStorage.removeItem('erp_overrides');
     }
-    set({ user: null, token: null, refreshToken: null });
+    set({ user: null, token: null, refreshToken: null, overrides: [] });
   },
 }));
+

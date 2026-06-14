@@ -32,3 +32,9 @@ export async function receivePurchaseOrder(id: string): Promise<PurchaseOrder> {
     method: 'POST',
   });
 }
+
+export async function deletePurchaseOrder(id: string): Promise<{ message: string }> {
+  return fetchApi(`/purchase/${id}`, {
+    method: 'DELETE',
+  });
+}

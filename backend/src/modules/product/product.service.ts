@@ -1,5 +1,5 @@
 import { ProductRepository } from './product.repository';
-import { CreateProductSchema, UpdateProductSchema, SetBomSchema } from './product.types';
+import { CreateProductSchema, UpdateProductSchema, SetBomSchema, ImportProductsSchema } from './product.types';
 import { AuditService } from '../audit/audit.service';
 
 export class ProductService {
@@ -98,4 +98,66 @@ export class ProductService {
 
     return result;
   }
+
+  /**
+   * Delete a product and record an audit log.
+   */
+  async delete(id: string, companyId: string, userId?: string) {
+    const product = await this.getById(id, companyId);
+    const result = await this.repository.delete(id, companyId);
+    await this.auditService.log(
+      'Product',
+      id,
+      'DELETE',
+      { name: product.name, procurementType: product.procurementType },
+      null,
+      companyId,
+      userId
+    );
+    return result;
+  }
+
+  /**
+   * Delete a product's BoM and record an audit log.
+   */
+  async deleteBom(productId: string, companyId: string, userId?: string) {
+    const product = await this.getById(productId, companyId);
+    const bom = await this.repository.getBom(productId, companyId);
+    if (!bom) {
+      throw new Error('No BoM exists for this product');
+    }
+    const result = await this.repository.deleteBom(productId, companyId);
+    await this.auditService.log(
+      'BoM',
+      bom.id,
+      'DELETE',
+      { productId, itemsCount: bom.items.length },
+      null,
+      companyId,
+      userId
+    );
+    return result;
+  }
+
+  /**
+   * Import multiple products from parsed CSV.
+   */
+  async import(data: unknown, companyId: string, userId?: string) {
+    const parsed = ImportProductsSchema.parse(data);
+    const result = await this.repository.importMany(parsed.products, companyId);
+    
+    // Log audit event for import
+    await this.auditService.log(
+      'Product',
+      'batch-import',
+      'CREATE',
+      null,
+      { count: result.count },
+      companyId,
+      userId
+    );
+    
+    return result;
+  }
 }
+

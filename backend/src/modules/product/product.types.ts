@@ -36,8 +36,14 @@ export const SetBomSchema = z.object({
   operations: z.array(SetBomOperationSchema).optional().default([]),
 });
 
+export const ImportProductsSchema = z.object({
+  products: z.array(CreateProductSchema).min(1, 'At least one product is required for import'),
+});
+
 // --- Inferred Types ---
 
 export type CreateProductInput = z.infer<typeof CreateProductSchema>;
 export type UpdateProductInput = z.infer<typeof UpdateProductSchema>;
 export type SetBomInput = z.infer<typeof SetBomSchema>;
+export type ImportProductsInput = z.infer<typeof ImportProductsSchema>;
+

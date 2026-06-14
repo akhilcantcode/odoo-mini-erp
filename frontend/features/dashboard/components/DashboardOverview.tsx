@@ -76,22 +76,28 @@ export default function DashboardOverview() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    try {
-      const [s, o, inv, prod] = await Promise.all([
-        getDashboardStats(),
-        getSalesOrders(),
-        getInventory(),
-        getProducts()
-      ]);
-      setStats(s);
-      setSalesOrders(o);
-      setInventory(inv);
-      setProducts(prod);
-    } catch (err) {
-      console.error('Failed to load dashboard data:', err);
-    } finally {
-      setLoading(false);
+
+    // Safe wrapper: returns fallback value if the fetch fails (e.g. 403 Forbidden)
+    async function safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+      try {
+        return await fn();
+      } catch {
+        return fallback;
+      }
     }
+
+    const [s, o, inv, prod] = await Promise.all([
+      safeFetch(getDashboardStats, { salesTotal: 0, inventoryValue: 0, manufacturingActiveCount: 0 } as DashboardStats),
+      safeFetch(getSalesOrders, [] as SalesOrder[]),
+      safeFetch(getInventory, [] as InventoryItem[]),
+      safeFetch(getProducts, [] as Product[]),
+    ]);
+
+    setStats(s);
+    setSalesOrders(o);
+    setInventory(inv);
+    setProducts(prod);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -330,15 +336,6 @@ export default function DashboardOverview() {
           <p className="text-xs text-gray-500 mt-0.5">
             Real-time tracking of sales, inventory, production, and customer engagement.
           </p>
-        </div>
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          <button 
-            onClick={fetchData}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition cursor-pointer"
-          >
-            <RefreshCw size={13} className="text-gray-400" />
-            Refresh
-          </button>
         </div>
       </div>
 

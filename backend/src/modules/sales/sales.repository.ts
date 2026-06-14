@@ -285,4 +285,29 @@ export class SalesRepository {
       return updatedOrder;
     });
   }
+
+  /**
+   * Delete a sales order and all of its items and reservation records in a transaction.
+   */
+  async delete(id: string, companyId: string) {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findFirst({
+        where: { id, companyId },
+      });
+      if (!order) {
+        throw new Error('Sales order not found');
+      }
+
+      // Delete dependent items and reservation records
+      await tx.salesOrderItem.deleteMany({
+        where: { orderId: id },
+      });
+      await tx.reservation.deleteMany({
+        where: { sourceId: id, sourceType: ReservationSourceType.sales },
+      });
+      return tx.salesOrder.delete({
+        where: { id },
+      });
+    });
+  }
 }

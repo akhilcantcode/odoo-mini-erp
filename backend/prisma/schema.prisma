@@ -100,6 +100,7 @@ model Company {
   auditLogs               AuditLog[]
   manufacturingOrderItems ManufacturingOrderItem[]
   manufacturingWorkOrders ManufacturingWorkOrder[]
+  userPermissionOverrides UserPermissionOverride[]
 }
 
 //////////////////////////////////////////////////////
@@ -332,6 +333,7 @@ model User {
   responsiblePurchaseOrders PurchaseOrder[] @relation("PurchaseOrderResponsible")
   assignedManufacturingOrders ManufacturingOrder[] @relation("MOAssignee")
   auditLogs                 AuditLog[]
+  userPermissionOverrides   UserPermissionOverride[]
 }
 
 model Role {
@@ -395,4 +397,24 @@ model AuditLog {
 
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
+}
+
+//////////////////////////////////////////////////////
+// PER-USER PERMISSION OVERRIDES
+//////////////////////////////////////////////////////
+
+model UserPermissionOverride {
+  id      String  @id @default(uuid())
+  userId  String
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  module  String  // e.g. "sales", "purchase", "manufacturing", "product", "inventory"
+  field   String  // e.g. "Customer", "Sales Price", "Ordered Quantity"
+  action  String  // "create" | "view" | "edit" | "delete"
+  allowed Boolean // true = explicitly grant, false = explicitly deny
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  @@unique([userId, module, field, action])
 }

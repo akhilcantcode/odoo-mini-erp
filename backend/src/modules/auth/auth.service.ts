@@ -209,6 +209,31 @@ export class AuthService {
   ) {
     return this.repository.updateRolePermissions(companyId, roleName, permissions);
   }
+
+  /**
+   * Get per-user permission overrides.
+   */
+  async getUserOverrides(companyId: string, userId: string) {
+    return this.repository.findUserOverrides(companyId, userId);
+  }
+
+  /**
+   * Set (batch upsert) per-user permission overrides.
+   */
+  async setUserOverrides(
+    companyId: string,
+    userId: string,
+    overrides: { module: string; field: string; action: string; allowed: boolean }[]
+  ) {
+    return this.repository.upsertUserOverrides(companyId, userId, overrides);
+  }
+
+  /**
+   * Reset all per-user permission overrides back to role defaults.
+   */
+  async resetUserOverrides(companyId: string, userId: string) {
+    return this.repository.deleteUserOverrides(companyId, userId);
+  }
 }
 
 // Inline placeholder import fix for compile

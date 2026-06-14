@@ -48,4 +48,11 @@ router.post(
   controller.deliver
 );
 
+router.delete(
+  '/:id',
+  authenticate,
+  requirePermission(Module.SALES, PermissionAction.DELETE),
+  controller.delete
+);
+
 export { router as salesRouter };

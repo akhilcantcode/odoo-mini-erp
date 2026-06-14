@@ -10,7 +10,8 @@ import {
   completeManufacturingOrder,
   confirmManufacturingOrder,
   cancelManufacturingOrder,
-  toggleWorkOrder
+  toggleWorkOrder,
+  deleteManufacturingOrder
 } from '../../../features/manufacturing/services';
 import { getProducts } from '../../../features/product/services';
 import { getUsers, ManagedUser } from '../../../services/auth';
@@ -19,13 +20,20 @@ import type { ManufacturingOrder } from '../../../features/manufacturing/types';
 import type { Product } from '../../../features/product/types';
 import type { AuditLog } from '../../../features/audit/types';
 import { useToast } from '../layout';
-import { Btn, Card, Input, Select, EmptyState, StatusBadge } from '../../../components/ui';
+import { Btn, Card, Input, Select, EmptyState, StatusBadge, AccessDenied } from '../../../components/ui';
 import {
-  Factory, RefreshCw, Plus, Check, Play, CheckCircle2, X, Search, Clock, LayoutGrid, List
+  Factory, RefreshCw, Plus, Check, Play, CheckCircle2, X, Search, Clock, LayoutGrid, List, Trash2
 } from 'lucide-react';
+import { hasFieldPermission, hasModuleViewPermission } from '../../../utils/permissions';
 
 export default function ManufacturingPage() {
+  const { user, overrides } = useAuthStore();
   const toast = useToast();
+  const canConfirm = user?.roles?.some(r => r === 'MANUFACTURING' || r === 'OWNER' || r === 'ADMIN' || r === 'SALES');
+  const canStart = user?.roles?.some(r => r === 'MANUFACTURING' || r === 'OWNER' || r === 'ADMIN' || r === 'SALES');
+  const canComplete = user?.roles?.some(r => r === 'MANUFACTURING' || r === 'OWNER' || r === 'ADMIN' || r === 'SALES');
+  const canCreate = hasFieldPermission(user?.roles, 'manufacturing', 'Product to Manufacture', 'create', overrides);
+  const canDelete = user?.roles?.some(r => r === 'OWNER' || r === 'ADMIN');
   const [orders, setOrders] = useState<ManufacturingOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [usersList, setUsersList] = useState<ManagedUser[]>([]);
@@ -125,6 +133,20 @@ export default function ManufacturingPage() {
     setActing(null);
   };
 
+  const handleDeleteOrder = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this manufacturing order?')) return;
+    try {
+      await deleteManufacturingOrder(id);
+      toast('Manufacturing Order deleted successfully', 'success');
+      setSelectedOrder(null);
+      setShowLogs(false);
+      setOrderLogs([]);
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to delete manufacturing order', 'error');
+    }
+  };
+
   const fetchOrderLogs = async (orderId: string) => {
     setLoadingLogs(true);
     try {
@@ -176,7 +198,7 @@ export default function ManufacturingPage() {
             >
               Back
             </Btn>
-            {selectedOrder.status === 'draft' && (
+            {selectedOrder.status === 'draft' && canConfirm && (
               <Btn
                 variant="primary"
                 size="sm"
@@ -186,7 +208,7 @@ export default function ManufacturingPage() {
                 Confirm
               </Btn>
             )}
-            {(selectedOrder.status === 'confirmed' || selectedOrder.status === 'draft') && (
+            {(selectedOrder.status === 'confirmed' || selectedOrder.status === 'draft') && canStart && (
               <Btn
                 variant="primary"
                 size="sm"
@@ -196,7 +218,7 @@ export default function ManufacturingPage() {
                 Start
               </Btn>
             )}
-            {selectedOrder.status === 'in_progress' && (
+            {selectedOrder.status === 'in_progress' && canComplete && (
               <Btn
                 variant="primary"
                 size="sm"
@@ -208,7 +230,7 @@ export default function ManufacturingPage() {
             )}
             {(selectedOrder.status === 'draft' ||
               selectedOrder.status === 'confirmed' ||
-              selectedOrder.status === 'in_progress') && (
+              selectedOrder.status === 'in_progress') && canConfirm && (
               <Btn
                 variant="danger"
                 size="sm"
@@ -216,6 +238,15 @@ export default function ManufacturingPage() {
                 disabled={acting === selectedOrder.id}
               >
                 Cancel
+              </Btn>
+            )}
+            {canDelete && (
+              <Btn
+                variant="danger"
+                size="sm"
+                onClick={() => handleDeleteOrder(selectedOrder.id)}
+              >
+                Delete
               </Btn>
             )}
           </div>
@@ -530,9 +561,23 @@ export default function ManufacturingPage() {
             <span className="font-mono text-xs font-bold text-sky-600 group-hover:underline">
               {o.id.slice(0, 13)}...
             </span>
-            <span className="text-xs text-gray-400 font-mono">
-              {new Date(o.createdAt).toLocaleDateString()}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400 font-mono">
+                {new Date(o.createdAt).toLocaleDateString()}
+              </span>
+              {canDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteOrder(o.id);
+                  }}
+                  className="p-1 text-gray-400 hover:text-red-655 hover:bg-red-50 rounded transition cursor-pointer"
+                  title="Delete Manufacturing Order"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -613,6 +658,10 @@ export default function ManufacturingPage() {
     );
   };
 
+  if (!hasModuleViewPermission(user?.roles, 'manufacturing', overrides)) {
+    return <AccessDenied module="Manufacturing Orders" />;
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* ── Header ── */}
@@ -627,9 +676,6 @@ export default function ManufacturingPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Btn variant="ghost" size="sm" onClick={refresh}>
-            <RefreshCw size={14} />
-          </Btn>
           <Btn variant={showSearchBar ? "primary" : "secondary"} size="sm" onClick={() => setShowSearchBar(!showSearchBar)} title="Toggle search bar">
             <Search size={14} />
           </Btn>
@@ -637,9 +683,11 @@ export default function ManufacturingPage() {
             {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
             <span className="ml-1 hidden sm:inline">{viewMode === 'list' ? 'Kanban' : 'List'}</span>
           </Btn>
-          <Btn size="sm" onClick={() => setShowForm(!showForm)}>
-            <Plus size={14} /> New MO
-          </Btn>
+          {canCreate && (
+            <Btn size="sm" onClick={() => setShowForm(!showForm)}>
+              <Plus size={14} /> New MO
+            </Btn>
+          )}
         </div>
       </div>
 
@@ -701,6 +749,7 @@ export default function ManufacturingPage() {
                 value={moProductId}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMoProductId(e.target.value)}
                 required
+                disabled={!hasFieldPermission(user?.roles, 'manufacturing', 'Product to Manufacture', 'create', overrides)}
               >
                 <option value="">Select product...</option>
                 {products.map((p) => (
@@ -717,12 +766,20 @@ export default function ManufacturingPage() {
                 value={moQty}
                 onChange={(e) => setMoQty(e.target.value)}
                 required
+                disabled={!hasFieldPermission(user?.roles, 'manufacturing', 'Product Quantity', 'create', overrides)}
               />
-              <Input label="Schedule Date" type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} />
+              <Input
+                label="Schedule Date"
+                type="date"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                disabled={!hasFieldPermission(user?.roles, 'manufacturing', 'Creation Date', 'create', overrides)}
+              />
               <Select
                 label="Assignee"
                 value={assigneeId}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setAssigneeId(e.target.value)}
+                disabled={!hasFieldPermission(user?.roles, 'manufacturing', 'Responsible Person', 'create', overrides)}
               >
                 <option value="">Select assignee...</option>
                 {usersList.map((u) => (
@@ -862,6 +919,18 @@ export default function ManufacturingPage() {
                             <span className="text-xs text-red-500 font-medium flex items-center gap-1">
                               <X size={12} /> Cancelled
                             </span>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteOrder(o.id);
+                              }}
+                              className="p-1 text-gray-400 hover:text-red-650 hover:bg-red-50 rounded transition cursor-pointer ml-1"
+                              title="Delete Manufacturing Order"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           )}
                         </div>
                       </td>

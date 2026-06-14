@@ -1,17 +1,22 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { getProducts, createProduct } from '../../../features/product/services';
+import { getProducts, createProduct, deleteProduct, importProducts } from '../../../features/product/services';
 import type { Product } from '../../../features/product/types';
 import { useToast } from '../layout';
-import { Btn, Card, Input, Select, EmptyState, StatusBadge } from '../../../components/ui';
+import { Btn, Card, Input, Select, EmptyState, StatusBadge, AccessDenied } from '../../../components/ui';
 import {
-  RefreshCw, Plus, Check, Package, Search, X,
+  RefreshCw, Plus, Check, Package, Search, X, Trash2,
   DollarSign, Layers, TrendingUp, ShoppingCart, LayoutGrid, List
 } from 'lucide-react';
+import { useAuthStore } from '../../../store/authStore';
+import { hasFieldPermission, hasModuleViewPermission } from '../../../utils/permissions';
 
 export default function ProductsPage() {
+  const { user, overrides } = useAuthStore();
   const toast = useToast();
+  const canCreate = hasFieldPermission(user?.roles, 'product', 'Product', 'create', overrides);
+  const canDelete = hasFieldPermission(user?.roles, 'product', 'Product', 'delete', overrides);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -19,6 +24,18 @@ export default function ProductsPage() {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [showSearchBar, setShowSearchBar] = useState(true);
+
+  // CSV Import state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [csvPreview, setCsvPreview] = useState<{
+    name: string;
+    salesPrice: number | null;
+    costPrice: number | null;
+    procurementType: 'purchase' | 'manufacture';
+    procureOnDemand: boolean;
+    errors: string[];
+  }[]>([]);
+  const [importing, setImporting] = useState(false);
 
   // Form state
   const [fName, setFName] = useState('');
@@ -42,6 +59,163 @@ export default function ProductsPage() {
     refresh();
   }, [refresh]);
 
+  const parseCSV = (text: string) => {
+    const lines: string[][] = [];
+    let row: string[] = [''];
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          row[row.length - 1] += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        row.push('');
+      } else if ((char === '\r' || char === '\n') && !inQuotes) {
+        if (char === '\r' && nextChar === '\n') {
+          i++;
+        }
+        lines.push(row);
+        row = [''];
+      } else {
+        row[row.length - 1] += char;
+      }
+    }
+    if (row.length > 1 || row[0] !== '') {
+      lines.push(row);
+    }
+    return lines;
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      const parsedLines = parseCSV(text);
+      if (parsedLines.length < 2) {
+        toast('CSV file is empty or has no header/data rows', 'error');
+        return;
+      }
+
+      const headers = parsedLines[0].map(h => h.trim().toLowerCase());
+      
+      const nameIdx = headers.indexOf('name');
+      const salesIdx = headers.indexOf('sales price');
+      const costIdx = headers.indexOf('cost price');
+      const procurementIdx = headers.indexOf('procurement');
+      const demandIdx = headers.indexOf('procure on demand');
+
+      if (nameIdx === -1 || procurementIdx === -1) {
+        toast('CSV must contain at least "Name" and "Procurement" columns', 'error');
+        return;
+      }
+
+      const items: typeof csvPreview = [];
+
+      for (let i = 1; i < parsedLines.length; i++) {
+        const row = parsedLines[i];
+        if (row.length === 1 && row[0] === '') continue; // Skip empty rows
+
+        const errors: string[] = [];
+        
+        const rawName = row[nameIdx]?.trim() || '';
+        const rawSales = salesIdx !== -1 ? row[salesIdx]?.trim() : '';
+        const rawCost = costIdx !== -1 ? row[costIdx]?.trim() : '';
+        const rawProcurement = row[procurementIdx]?.trim().toLowerCase() || '';
+        const rawDemand = demandIdx !== -1 ? row[demandIdx]?.trim().toLowerCase() : '';
+
+        if (!rawName) {
+          errors.push('Name is required');
+        }
+
+        let salesPrice: number | null = null;
+        if (rawSales) {
+          const val = parseFloat(rawSales);
+          if (isNaN(val) || val < 0) {
+            errors.push('Sales Price must be a non-negative number');
+          } else {
+            salesPrice = val;
+          }
+        }
+
+        let costPrice: number | null = null;
+        if (rawCost) {
+          const val = parseFloat(rawCost);
+          if (isNaN(val) || val < 0) {
+            errors.push('Cost Price must be a non-negative number');
+          } else {
+            costPrice = val;
+          }
+        }
+
+        let procurementType: 'purchase' | 'manufacture' = 'purchase';
+        if (rawProcurement === 'purchase' || rawProcurement === 'buy') {
+          procurementType = 'purchase';
+        } else if (rawProcurement === 'manufacture' || rawProcurement === 'make') {
+          procurementType = 'manufacture';
+        } else {
+          errors.push('Procurement must be "purchase" or "manufacture"');
+        }
+
+        let procureOnDemand = false;
+        if (rawDemand === 'true' || rawDemand === 'yes' || rawDemand === '1') {
+          procureOnDemand = true;
+        }
+
+        items.push({
+          name: rawName,
+          salesPrice,
+          costPrice,
+          procurementType,
+          procureOnDemand,
+          errors
+        });
+      }
+
+      setCsvPreview(items);
+    };
+
+    reader.readAsText(file);
+  };
+
+  const handleConfirmImport = async () => {
+    if (csvPreview.length === 0) return;
+    const hasErrors = csvPreview.some(item => item.errors.length > 0);
+    if (hasErrors) {
+      toast('Please fix CSV errors before importing', 'error');
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const payload = csvPreview.map(item => ({
+        name: item.name,
+        salesPrice: item.salesPrice,
+        costPrice: item.costPrice,
+        procurementType: item.procurementType,
+        procureOnDemand: item.procureOnDemand
+      }));
+
+      await importProducts(payload);
+      toast(`Successfully imported ${payload.length} products!`, 'success');
+      setShowImportModal(false);
+      setCsvPreview([]);
+      refresh();
+    } catch (err: any) {
+      toast(err.message || 'Failed to import products', 'error');
+    }
+    setImporting(false);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -63,6 +237,17 @@ export default function ProductsPage() {
       toast(err instanceof Error ? err.message : 'Failed', 'error');
     }
     setSaving(false);
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this product? This will also clear its inventory, stock ledgers, and bill of materials (if any).')) return;
+    try {
+      await deleteProduct(id);
+      toast('Product deleted successfully', 'success');
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to delete product', 'error');
+    }
   };
 
   // Generate initials from product name
@@ -187,7 +372,21 @@ export default function ProductsPage() {
               Stock: <span className={`font-semibold tabular-nums ${isOutOfStock ? 'text-red-600' : 'text-gray-800'}`}>{onHand}</span>
             </span>
           </div>
-          <StatusBadge status={p.procurementType} />
+          <div className="flex items-center gap-2">
+            <StatusBadge status={p.procurementType} />
+            {canDelete && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteProduct(p.id);
+                }}
+                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
+                title="Delete Product"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -229,6 +428,10 @@ export default function ProductsPage() {
     },
   ];
 
+  if (!hasModuleViewPermission(user?.roles, 'product', overrides)) {
+    return <AccessDenied module="Products" />;
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* ── Header ── */}
@@ -243,9 +446,6 @@ export default function ProductsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Btn variant="ghost" size="sm" onClick={refresh}>
-            <RefreshCw size={14} />
-          </Btn>
           <Btn variant={showSearchBar ? "primary" : "secondary"} size="sm" onClick={() => setShowSearchBar(!showSearchBar)} title="Toggle search bar">
             <Search size={14} />
           </Btn>
@@ -294,9 +494,16 @@ export default function ProductsPage() {
             </svg>
             Export
           </Btn>
-          <Btn size="sm" onClick={() => setShowForm(!showForm)}>
-            <Plus size={14} /> Add Product
-          </Btn>
+          {canCreate && (
+            <div className="flex gap-2">
+              <Btn variant="secondary" size="sm" onClick={() => setShowImportModal(true)}>
+                Import CSV
+              </Btn>
+              <Btn size="sm" onClick={() => setShowForm(!showForm)}>
+                <Plus size={14} /> Add Product
+              </Btn>
+            </div>
+          )}
         </div>
       </div>
 
@@ -365,6 +572,7 @@ export default function ProductsPage() {
               value={fName}
               onChange={(e) => setFName(e.target.value)}
               required
+              disabled={!hasFieldPermission(user?.roles, 'product', 'Product', 'create', overrides)}
             />
             <Input
               label="Sales Price"
@@ -373,6 +581,7 @@ export default function ProductsPage() {
               placeholder="0.00"
               value={fSales}
               onChange={(e) => setFSales(e.target.value)}
+              disabled={!hasFieldPermission(user?.roles, 'product', 'Sales Price', 'create', overrides)}
             />
             <Input
               label="Cost Price"
@@ -381,11 +590,13 @@ export default function ProductsPage() {
               placeholder="0.00"
               value={fCost}
               onChange={(e) => setFCost(e.target.value)}
+              disabled={!hasFieldPermission(user?.roles, 'product', 'Cost Price', 'create', overrides)}
             />
             <Select
               label="Procurement"
               value={fType}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFType(e.target.value as 'purchase' | 'manufacture')}
+              disabled={!hasFieldPermission(user?.roles, 'product', 'Procurement Method', 'create', overrides)}
             >
               <option value="purchase">Purchase</option>
               <option value="manufacture">Manufacture</option>
@@ -431,6 +642,7 @@ export default function ProductsPage() {
                   <th className="px-5 py-3.5 text-right">Cost Price</th>
                   <th className="px-5 py-3.5 text-center">Strategy</th>
                   <th className="px-5 py-3.5 text-center">On Hand</th>
+                  <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -507,6 +719,20 @@ export default function ProductsPage() {
                           </span>
                         </div>
                       </td>
+                      <td className="px-5 py-3.5 text-right">
+                        {canDelete && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteProduct(p.id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-650 hover:bg-red-50 rounded transition cursor-pointer"
+                            title="Delete Product"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -517,6 +743,129 @@ export default function ProductsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-fade-in w-full">
           {filteredProducts.map((p) => renderProductKanbanCard(p))}
+        </div>
+      )}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-gray-100 overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div>
+                <h3 className="text-md font-bold text-gray-900">Import Products from CSV</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Upload a CSV file containing your product catalog.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setCsvPreview([]);
+                }}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              {/* Instructions */}
+              <div className="p-4 bg-sky-50/60 border border-sky-100 rounded-xl text-xs text-sky-800 space-y-2">
+                <p className="font-semibold">CSV Column Requirements:</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li><strong>Name</strong> (required): Product name.</li>
+                  <li><strong>Procurement</strong> (required): Must be either <code>purchase</code> or <code>manufacture</code>.</li>
+                  <li><strong>Sales Price</strong> (optional): Non-negative float.</li>
+                  <li><strong>Cost Price</strong> (optional): Non-negative float.</li>
+                  <li><strong>Procure on Demand</strong> (optional): <code>true</code> or <code>false</code>.</li>
+                </ul>
+                <p className="text-[10px] text-sky-600 pt-1">Example: <code>Name,Procurement,Sales Price,Cost Price,Procure on Demand</code></p>
+              </div>
+
+              {/* File Select */}
+              <div className="border-2 border-dashed border-gray-200 hover:border-sky-300 rounded-xl p-6 transition flex flex-col items-center justify-center bg-gray-50/20 relative">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileChange}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <div className="text-center space-y-1 pointer-events-none">
+                  <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-sky-50 text-sky-600 mb-2">
+                    <Plus size={20} />
+                  </div>
+                  <p className="text-xs font-semibold text-gray-700">Choose CSV File</p>
+                  <p className="text-[10px] text-gray-400">Click to browse your computer (.csv)</p>
+                </div>
+              </div>
+
+              {/* Preview Table */}
+              {csvPreview.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Parsed Products Preview ({csvPreview.length} rows)</h4>
+                    {csvPreview.some(p => p.errors.length > 0) && (
+                      <span className="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full font-semibold border border-red-100">
+                        Contains errors
+                      </span>
+                    )}
+                  </div>
+                  <div className="border border-gray-100 rounded-xl overflow-hidden max-h-[300px] overflow-y-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-100 text-gray-400 font-semibold uppercase tracking-wider text-[10px]">
+                          <th className="px-4 py-2">Name</th>
+                          <th className="px-4 py-2">Procurement</th>
+                          <th className="px-4 py-2 text-right">Sales Price</th>
+                          <th className="px-4 py-2 text-right">Cost Price</th>
+                          <th className="px-4 py-2 text-center">On Demand</th>
+                          <th className="px-4 py-2">Validation</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 bg-white">
+                        {csvPreview.map((item, idx) => (
+                          <tr key={idx} className={`hover:bg-gray-50/40 ${item.errors.length > 0 ? 'bg-red-50/20' : ''}`}>
+                            <td className="px-4 py-2.5 font-medium text-gray-800">{item.name || <span className="text-red-500 italic">Empty</span>}</td>
+                            <td className="px-4 py-2.5">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${item.procurementType === 'manufacture' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+                                {item.procurementType}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-mono">${item.salesPrice !== null ? item.salesPrice.toFixed(2) : '-'}</td>
+                            <td className="px-4 py-2.5 text-right font-mono">${item.costPrice !== null ? item.costPrice.toFixed(2) : '-'}</td>
+                            <td className="px-4 py-2.5 text-center">{item.procureOnDemand ? 'Yes' : 'No'}</td>
+                            <td className="px-4 py-2.5">
+                              {item.errors.length > 0 ? (
+                                <span className="text-red-500 text-[10px] font-medium leading-none block">{item.errors.join(', ')}</span>
+                              ) : (
+                                <span className="text-emerald-500 text-[10px] font-medium block">✓ Valid</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-2">
+              <Btn variant="secondary" size="sm" onClick={() => {
+                setShowImportModal(false);
+                setCsvPreview([]);
+              }}>
+                Cancel
+              </Btn>
+              <Btn
+                size="sm"
+                onClick={handleConfirmImport}
+                disabled={csvPreview.length === 0 || csvPreview.some(p => p.errors.length > 0) || importing}
+              >
+                {importing ? <RefreshCw size={13} className="animate-spin-slow mr-1.5 inline" /> : null}
+                Confirm Import
+              </Btn>
+            </div>
+          </div>
         </div>
       )}
     </div>

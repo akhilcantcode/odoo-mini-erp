@@ -37,6 +37,7 @@ export class ManufacturingService {
    * Create a new manufacturing order.
    */
   async create(data: unknown, companyId: string, userId?: string) {
+    await this.verifyManufacturingWrite(userId, companyId);
     const parsed = CreateManufacturingOrderSchema.parse(data);
     const mo = await this.repository.create(parsed, companyId);
     await this.auditService.log('ManufacturingOrder', mo.id, 'CREATE', null, { productId: mo.productId, quantity: mo.quantity, status: mo.status }, companyId, userId);
@@ -47,6 +48,7 @@ export class ManufacturingService {
    * Confirm a manufacturing order (draft -> confirmed)
    */
   async confirm(id: string, companyId: string, userId?: string) {
+    await this.verifyManufacturingWrite(userId, companyId);
     const mo = await this.getById(id, companyId);
 
     if (mo.status !== ManufacturingStatus.draft) {
@@ -64,6 +66,7 @@ export class ManufacturingService {
    * Cancel a manufacturing order (draft/confirmed/in_progress -> cancelled)
    */
   async cancel(id: string, companyId: string, userId?: string) {
+    await this.verifyManufacturingWrite(userId, companyId);
     const mo = await this.getById(id, companyId);
 
     if (mo.status === ManufacturingStatus.completed || mo.status === ManufacturingStatus.cancelled) {
@@ -82,6 +85,7 @@ export class ManufacturingService {
    * Allows transitioning from either draft or confirmed.
    */
   async start(id: string, companyId: string, userId?: string) {
+    await this.verifyManufacturingWrite(userId, companyId);
     const mo = await this.getById(id, companyId);
 
     if (mo.status !== ManufacturingStatus.draft && mo.status !== ManufacturingStatus.confirmed) {
@@ -190,6 +194,7 @@ export class ManufacturingService {
    * Complete a manufacturing order — produce finished goods into inventory.
    */
   async complete(id: string, companyId: string, userId?: string) {
+    await this.verifyManufacturingWrite(userId, companyId);
     const mo = await this.getById(id, companyId);
 
     if (mo.status !== ManufacturingStatus.in_progress) {
@@ -282,5 +287,40 @@ export class ManufacturingService {
     });
 
     return updatedWo;
+  }
+
+  /**
+   * Delete a manufacturing order and log a DELETE audit event.
+   */
+  async delete(id: string, companyId: string, userId?: string) {
+    await this.verifyManufacturingWrite(userId, companyId);
+    const mo = await this.getById(id, companyId);
+    const result = await this.repository.delete(id, companyId);
+    await this.auditService.log(
+      'ManufacturingOrder',
+      id,
+      'DELETE',
+      { productId: mo.productId, status: mo.status },
+      null,
+      companyId,
+      userId
+    );
+    return result;
+  }
+
+  private async verifyManufacturingWrite(userId: string | undefined, companyId: string) {
+    if (!userId) return;
+    const user = await prisma.user.findFirst({
+      where: { id: userId, companyId },
+      include: { roles: { include: { role: true } } }
+    });
+    if (!user) return;
+    const userRoles = user.roles.map(ur => ur.role.name);
+    if (userRoles.some(r => r === 'OWNER' || r === 'ADMIN')) return;
+    if (!userRoles.includes('MANUFACTURING') && !userRoles.includes('SALES')) {
+      const error = new Error('Forbidden: Insufficient role privileges to modify Manufacturing Orders') as Error & { statusCode: number };
+      error.statusCode = 403;
+      throw error;
+    }
   }
 }

@@ -14,5 +14,6 @@ router.post('/:id/start', authenticate, requirePermission(Module.MANUFACTURING, 
 router.post('/:id/complete', authenticate, requirePermission(Module.MANUFACTURING, PermissionAction.UPDATE), controller.complete);
 router.post('/:id/cancel', authenticate, requirePermission(Module.MANUFACTURING, PermissionAction.UPDATE), controller.cancel);
 router.post('/:id/work-orders/:workOrderId/toggle', authenticate, requirePermission(Module.MANUFACTURING, PermissionAction.UPDATE), controller.toggleWorkOrder);
+router.delete('/:id', authenticate, requirePermission(Module.MANUFACTURING, PermissionAction.DELETE), controller.delete);
 
 export { router as manufacturingRouter };

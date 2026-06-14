@@ -5,18 +5,21 @@ import { prisma } from '../../config/prisma';
 import { AuditService } from '../audit/audit.service';
 import { PurchaseRepository } from '../purchase/purchase.repository';
 import { ManufacturingRepository } from '../manufacturing/manufacturing.repository';
+import { ProcurementService } from '../procurement/procurement.service';
 
 export class SalesService {
   private repository: SalesRepository;
   private auditService: AuditService;
   private purchaseRepository: PurchaseRepository;
   private manufacturingRepository: ManufacturingRepository;
+  private procurementService: ProcurementService;
 
   constructor() {
     this.repository = new SalesRepository();
     this.auditService = new AuditService();
     this.purchaseRepository = new PurchaseRepository();
     this.manufacturingRepository = new ManufacturingRepository();
+    this.procurementService = new ProcurementService();
   }
 
   /**
@@ -141,9 +144,10 @@ export class SalesService {
    * Create a new sales order in draft status along with auto-generated MOs and POs in a transaction.
    */
   async create(data: unknown, companyId: string, userId?: string) {
+    await this.verifySalesWrite(userId, companyId);
     const parsed = CreateSalesOrderSchema.parse(data);
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // 1. Create the Sales Order using the repository (generates SO-XXXXX sequence ID)
       const order = await this.repository.create(
         {
@@ -271,6 +275,14 @@ export class SalesService {
         procuredPOs,
       };
     });
+
+    try {
+      await this.procurementService.run(companyId);
+    } catch (err) {
+      console.error('Failed to run procurement automatically on create:', err);
+    }
+
+    return result;
   }
 
   /**
@@ -297,6 +309,7 @@ export class SalesService {
    * Confirm a draft sales order.
    */
   async confirm(id: string, companyId: string, userId?: string) {
+    await this.verifySalesWrite(userId, companyId);
     const updated = await this.repository.confirm(id, companyId);
     await this.auditService.log(
       'SalesOrder',
@@ -307,6 +320,13 @@ export class SalesService {
       companyId,
       userId
     );
+
+    try {
+      await this.procurementService.run(companyId);
+    } catch (err) {
+      console.error('Failed to run procurement automatically on confirm:', err);
+    }
+
     return updated;
   }
 
@@ -314,6 +334,7 @@ export class SalesService {
    * Deliver a confirmed sales order.
    */
   async deliver(id: string, companyId: string, userId?: string) {
+    await this.verifySalesDeliver(userId, companyId);
     const order = await this.getById(id, companyId);
     const updated = await this.repository.deliver(id, companyId);
     await this.auditService.log(
@@ -325,6 +346,72 @@ export class SalesService {
       companyId,
       userId
     );
+
+    try {
+      await this.procurementService.run(companyId);
+    } catch (err) {
+      console.error('Failed to run procurement automatically on deliver:', err);
+    }
+
     return updated;
+  }
+
+  /**
+   * Delete a sales order, record audit log, and run procurement runner.
+   */
+  async delete(id: string, companyId: string, userId?: string) {
+    await this.verifySalesWrite(userId, companyId);
+    const order = await this.getById(id, companyId);
+    const result = await this.repository.delete(id, companyId);
+    await this.auditService.log(
+      'SalesOrder',
+      id,
+      'DELETE',
+      { customerName: order.customerName, status: order.status },
+      null,
+      companyId,
+      userId
+    );
+
+    // Re-run procurement engine as demand might have changed
+    try {
+      await this.procurementService.run(companyId);
+    } catch (err) {
+      console.error('Failed to run procurement automatically on delete sales order:', err);
+    }
+
+    return result;
+  }
+
+  private async verifySalesWrite(userId: string | undefined, companyId: string) {
+    if (!userId) return;
+    const user = await prisma.user.findFirst({
+      where: { id: userId, companyId },
+      include: { roles: { include: { role: true } } }
+    });
+    if (!user) return;
+    const userRoles = user.roles.map(ur => ur.role.name);
+    if (userRoles.some(r => r === 'OWNER' || r === 'ADMIN')) return;
+    if (!userRoles.includes('SALES')) {
+      const error = new Error('Forbidden: Insufficient role privileges to modify Sales Orders') as Error & { statusCode: number };
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  private async verifySalesDeliver(userId: string | undefined, companyId: string) {
+    if (!userId) return;
+    const user = await prisma.user.findFirst({
+      where: { id: userId, companyId },
+      include: { roles: { include: { role: true } } }
+    });
+    if (!user) return;
+    const userRoles = user.roles.map(ur => ur.role.name);
+    if (userRoles.some(r => r === 'OWNER' || r === 'ADMIN')) return;
+    if (!userRoles.includes('INVENTORY') && !userRoles.includes('INVENTORY_MANAGER')) {
+      const error = new Error('Forbidden: Only Inventory Managers can deliver items') as Error & { statusCode: number };
+      error.statusCode = 403;
+      throw error;
+    }
   }
 }

@@ -6,7 +6,8 @@ import {
   getPurchaseOrders,
   createPurchaseOrder,
   confirmPurchaseOrder,
-  receivePurchaseOrder
+  receivePurchaseOrder,
+  deletePurchaseOrder
 } from '../../../features/purchase/services';
 import { getProducts } from '../../../features/product/services';
 import { getUsers, ManagedUser } from '../../../services/auth';
@@ -15,13 +16,19 @@ import type { PurchaseOrder } from '../../../features/purchase/types';
 import type { Product } from '../../../features/product/types';
 import type { AuditLog } from '../../../features/audit/types';
 import { useToast } from '../layout';
-import { Btn, Card, Input, Select, EmptyState, StatusBadge } from '../../../components/ui';
+import { Btn, Card, Input, Select, EmptyState, StatusBadge, AccessDenied } from '../../../components/ui';
 import {
-  ShoppingCart, RefreshCw, Plus, Check, X, ChevronRight, Truck, CheckCircle2, Search, Clock, TrendingDown, ShoppingBag, LayoutGrid, List
+  ShoppingCart, RefreshCw, Plus, Check, X, ChevronRight, Truck, CheckCircle2, Search, Clock, TrendingDown, ShoppingBag, LayoutGrid, List, Trash2
 } from 'lucide-react';
+import { hasFieldPermission, hasModuleViewPermission } from '../../../utils/permissions';
 
 export default function PurchasesPage() {
+  const { user, overrides } = useAuthStore();
   const toast = useToast();
+  const canConfirm = user?.roles?.some(r => r === 'PURCHASE' || r === 'OWNER' || r === 'ADMIN' || r === 'SALES');
+  const canReceive = user?.roles?.some(r => r === 'INVENTORY' || r === 'INVENTORY_MANAGER' || r === 'OWNER' || r === 'ADMIN');
+  const canCreate = hasFieldPermission(user?.roles, 'purchase', 'Vendor', 'create', overrides);
+  const canDelete = user?.roles?.some(r => r === 'OWNER' || r === 'ADMIN');
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [usersList, setUsersList] = useState<ManagedUser[]>([]);
@@ -146,6 +153,20 @@ export default function PurchasesPage() {
     setActing(null);
   };
 
+  const handleDeleteOrder = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this purchase order?')) return;
+    try {
+      await deletePurchaseOrder(id);
+      toast('Purchase Order deleted successfully', 'success');
+      setSelectedOrder(null);
+      setShowLogs(false);
+      setOrderLogs([]);
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to delete purchase order', 'error');
+    }
+  };
+
   const fetchOrderLogs = async (orderId: string) => {
     setLoadingLogs(true);
     try {
@@ -189,7 +210,7 @@ export default function PurchasesPage() {
             >
               Back
             </Btn>
-            {selectedOrder.status === 'draft' && (
+            {selectedOrder.status === 'draft' && canConfirm && (
               <Btn
                 variant="primary"
                 size="sm"
@@ -199,7 +220,7 @@ export default function PurchasesPage() {
                 Confirm
               </Btn>
             )}
-            {selectedOrder.status === 'confirmed' && (
+            {selectedOrder.status === 'confirmed' && canReceive && (
               <Btn
                 variant="primary"
                 size="sm"
@@ -212,6 +233,15 @@ export default function PurchasesPage() {
             {(selectedOrder.status === 'draft' || selectedOrder.status === 'confirmed') && (
               <Btn variant="danger" size="sm" disabled={true}>
                 Cancel
+              </Btn>
+            )}
+            {canDelete && (
+              <Btn
+                variant="danger"
+                size="sm"
+                onClick={() => handleDeleteOrder(selectedOrder.id)}
+              >
+                Delete
               </Btn>
             )}
           </div>
@@ -459,9 +489,23 @@ export default function PurchasesPage() {
             <span className="font-mono text-xs font-bold text-sky-600 group-hover:underline">
               {o.id.slice(0, 13)}...
             </span>
-            <span className="text-xs text-gray-400 font-mono">
-              {new Date(o.createdAt).toLocaleDateString()}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400 font-mono">
+                {new Date(o.createdAt).toLocaleDateString()}
+              </span>
+              {canDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteOrder(o.id);
+                  }}
+                  className="p-1 text-gray-400 hover:text-red-655 hover:bg-red-50 rounded transition cursor-pointer"
+                  title="Delete Purchase Order"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -523,6 +567,10 @@ export default function PurchasesPage() {
     );
   };
 
+  if (!hasModuleViewPermission(user?.roles, 'purchase', overrides)) {
+    return <AccessDenied module="Purchase Orders" />;
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* ── Header ── */}
@@ -537,9 +585,6 @@ export default function PurchasesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Btn variant="ghost" size="sm" onClick={refresh}>
-            <RefreshCw size={14} />
-          </Btn>
           <Btn variant={showSearchBar ? "primary" : "secondary"} size="sm" onClick={() => setShowSearchBar(!showSearchBar)} title="Toggle search bar">
             <Search size={14} />
           </Btn>
@@ -547,9 +592,11 @@ export default function PurchasesPage() {
             {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
             <span className="ml-1 hidden sm:inline">{viewMode === 'list' ? 'Kanban' : 'List'}</span>
           </Btn>
-          <Btn size="sm" onClick={() => setShowForm(!showForm)}>
-            <Plus size={14} /> New PO
-          </Btn>
+          {canCreate && (
+            <Btn size="sm" onClick={() => setShowForm(!showForm)}>
+              <Plus size={14} /> New PO
+            </Btn>
+          )}
         </div>
       </div>
 
@@ -612,17 +659,20 @@ export default function PurchasesPage() {
                 value={vendor}
                 onChange={(e) => setVendor(e.target.value)}
                 required
+                disabled={!hasFieldPermission(user?.roles, 'purchase', 'Vendor', 'create', overrides)}
               />
               <Input
                 label="Vendor Address"
                 placeholder="123 Supplier Rd, Suite A"
                 value={vendorAddress}
                 onChange={(e) => setVendorAddress(e.target.value)}
+                disabled={!hasFieldPermission(user?.roles, 'purchase', 'Vendor Address', 'create', overrides)}
               />
               <Select
                 label="Responsible Person"
                 value={responsiblePersonId}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setResponsiblePersonId(e.target.value)}
+                disabled={!hasFieldPermission(user?.roles, 'purchase', 'Responsible Person', 'create', overrides)}
               >
                 <option value="">Select responsible person…</option>
                 {usersList
@@ -651,6 +701,7 @@ export default function PurchasesPage() {
                     label="Product"
                     value={poProductId}
                     onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPoProductId(e.target.value)}
+                    disabled={!hasFieldPermission(user?.roles, 'purchase', 'Product', 'create', overrides)}
                   >
                     <option value="">Select product…</option>
                     {products.map((p) => (
@@ -668,9 +719,10 @@ export default function PurchasesPage() {
                     placeholder="10"
                     value={poQty}
                     onChange={(e) => setPoQty(e.target.value)}
+                    disabled={!hasFieldPermission(user?.roles, 'purchase', 'Ordered Quantity', 'create', overrides)}
                   />
                 </div>
-                <Btn type="button" variant="secondary" onClick={handleAddDraftItem}>
+                <Btn type="button" variant="secondary" onClick={handleAddDraftItem} disabled={!hasFieldPermission(user?.roles, 'purchase', 'Product', 'create', overrides)}>
                   <Plus size={14} /> Add
                 </Btn>
               </div>
@@ -822,6 +874,18 @@ export default function PurchasesPage() {
                             <span className="text-xs text-emerald-500 font-medium flex items-center gap-1">
                               <CheckCircle2 size={12} /> Done
                             </span>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteOrder(o.id);
+                              }}
+                              className="p-1 text-gray-400 hover:text-red-650 hover:bg-red-50 rounded transition cursor-pointer ml-1"
+                              title="Delete Purchase Order"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           )}
                         </div>
                       </td>

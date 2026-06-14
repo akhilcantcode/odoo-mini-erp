@@ -213,13 +213,6 @@ function AuditPageContent() {
           <h2 className="text-xl font-bold text-gray-900">Audit Logs</h2>
           <p className="text-xs text-gray-500 mt-0.5">Track all system changes and user activity</p>
         </div>
-        <button
-          onClick={fetchLogs}
-          className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer"
-          title="Refresh"
-        >
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-        </button>
       </div>
 
       {/* ─── STAT CARDS ─── */}

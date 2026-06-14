@@ -6,14 +6,24 @@ import { getProducts } from '../../../features/product/services';
 import type { InventoryItem, StockLedgerEntry } from '../../../features/inventory/types';
 import type { Product } from '../../../features/product/types';
 import { useToast } from '../layout';
-import { Btn, Card, Input, Select, EmptyState, StatusBadge, LedgerTypeBadge } from '../../../components/ui';
+import { Btn, Card, Input, Select, EmptyState, StatusBadge, LedgerTypeBadge, AccessDenied } from '../../../components/ui';
 import {
   Warehouse, RefreshCw, ArrowUpDown, Plus, Package, CheckCircle2,
   AlertCircle, Search, X, Check, ScrollText
 } from 'lucide-react';
+import { useAuthStore } from '../../../store/authStore';
+import { hasFieldPermission, hasModuleViewPermission } from '../../../utils/permissions';
 
 export default function InventoryPage() {
+  const { user, overrides } = useAuthStore();
   const toast = useToast();
+
+  if (!hasModuleViewPermission(user?.roles, 'inventory', overrides)) {
+    return <AccessDenied module="Inventory" />;
+  }
+
+  const canAdjust = hasFieldPermission(user?.roles, 'inventory', 'Adjust Inventory', 'create', overrides);
+
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [ledger, setLedger] = useState<StockLedgerEntry[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -191,9 +201,6 @@ export default function InventoryPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Btn variant="ghost" size="sm" onClick={refresh}>
-            <RefreshCw size={14} />
-          </Btn>
           <Btn
             variant="secondary"
             size="sm"
@@ -238,7 +245,7 @@ export default function InventoryPage() {
           <Btn variant="secondary" size="sm" onClick={() => setShowLedger(!showLedger)}>
             <ArrowUpDown size={14} /> {showLedger ? 'Stock Levels' : 'Ledger'}
           </Btn>
-          <Btn size="sm" onClick={() => setShowAdjust(!showAdjust)}>
+          <Btn size="sm" onClick={() => setShowAdjust(!showAdjust)} disabled={!canAdjust}>
             <Plus size={14} /> Adjust
           </Btn>
         </div>
@@ -307,6 +314,7 @@ export default function InventoryPage() {
                 value={adjProductId}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setAdjProductId(e.target.value)}
                 required
+                disabled={!canAdjust}
               >
                 <option value="">Select product...</option>
                 {products.map((p) => (
@@ -323,14 +331,16 @@ export default function InventoryPage() {
               value={adjQty}
               onChange={(e) => setAdjQty(e.target.value)}
               required
+              disabled={!canAdjust}
             />
             <Input
               label="Reference"
               placeholder="(optional)"
               value={adjRef}
               onChange={(e) => setAdjRef(e.target.value)}
+              disabled={!canAdjust}
             />
-            <Btn disabled={saving}>
+            <Btn disabled={saving || !canAdjust}>
               {saving ? <RefreshCw size={12} className="animate-spin-slow" /> : <Check size={12} />} Apply
             </Btn>
           </form>

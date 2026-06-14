@@ -53,3 +53,9 @@ export async function toggleWorkOrder(id: string, workOrderId: string): Promise<
     method: 'POST',
   });
 }
+
+export async function deleteManufacturingOrder(id: string): Promise<{ message: string }> {
+  return fetchApi(`/manufacturing/${id}`, {
+    method: 'DELETE',
+  });
+}

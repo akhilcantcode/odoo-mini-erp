@@ -7,7 +7,8 @@ import {
   createSalesOrder,
   confirmSalesOrder,
   deliverSalesOrder,
-  checkSalesOrderProcurement
+  checkSalesOrderProcurement,
+  deleteSalesOrder
 } from '../../../features/sales/services';
 import { getProducts } from '../../../features/product/services';
 import { getPurchaseOrders } from '../../../features/purchase/services';
@@ -17,11 +18,13 @@ import type { SalesOrder } from '../../../features/sales/types';
 import type { Product } from '../../../features/product/types';
 import type { AuditLog } from '../../../features/audit/types';
 import { useToast } from '../layout';
-import { Btn, Card, Input, Select, EmptyState, StatusBadge } from '../../../components/ui';
+import { Btn, Card, Input, Select, EmptyState, StatusBadge, AccessDenied } from '../../../components/ui';
 import {
-  ShoppingCart, RefreshCw, Plus, Check, X, CheckCircle2,
+  ShoppingCart, RefreshCw, Plus, Check, X, CheckCircle2, Trash2,
   AlertCircle, ShoppingBag, Search, Clock, TrendingUp, LayoutGrid, List
 } from 'lucide-react';
+import { hasFieldPermission, hasModuleViewPermission } from '../../../utils/permissions';
+
 
 export default function SalesPage() {
   const toast = useToast();
@@ -66,9 +69,11 @@ export default function SalesPage() {
     pos: { id: string; vendorName: string; itemsCount: number }[];
   } | null>(null);
 
-  const { user } = useAuthStore();
-  const canConfirm = user?.roles?.some((r) => r === 'SALES' || r === 'OWNER' || r === 'ADMIN');
-  const canDeliver = user?.roles?.some((r) => r === 'INVENTORY' || r === 'OWNER' || r === 'ADMIN');
+  const { user, overrides } = useAuthStore();
+  const canConfirm = hasFieldPermission(user?.roles, 'sales', 'Status', 'edit', overrides) || user?.roles?.some((r) => r === 'OWNER' || r === 'ADMIN');
+  const canDeliver = user?.roles?.some((r) => r === 'INVENTORY' || r === 'INVENTORY_MANAGER' || r === 'OWNER' || r === 'ADMIN');
+  const canCreate = hasFieldPermission(user?.roles, 'sales', 'Customer', 'create', overrides);
+  const canDelete = user?.roles?.some((r) => r === 'OWNER' || r === 'ADMIN');
 
   const handleAction = async (id: string, action: 'confirm' | 'deliver') => {
     setActing(id);
@@ -95,6 +100,20 @@ export default function SalesPage() {
       toast(err instanceof Error ? err.message : `Failed to ${action} sales order`, 'error');
     }
     setActing(null);
+  };
+
+  const handleDeleteOrder = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this sales order?')) return;
+    try {
+      await deleteSalesOrder(id);
+      toast('Sales Order deleted successfully', 'success');
+      setSelectedOrder(null);
+      setShowLogs(false);
+      setOrderLogs([]);
+      refresh();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to delete sales order', 'error');
+    }
   };
 
   const refresh = useCallback(async () => {
@@ -328,6 +347,15 @@ export default function SalesPage() {
             {(selectedOrder.status === 'draft' || selectedOrder.status === 'confirmed') && (
               <Btn variant="danger" size="sm" disabled={true}>
                 Cancel
+              </Btn>
+            )}
+            {canDelete && (
+              <Btn
+                variant="danger"
+                size="sm"
+                onClick={() => handleDeleteOrder(selectedOrder.id)}
+              >
+                Delete
               </Btn>
             )}
           </div>
@@ -575,9 +603,23 @@ export default function SalesPage() {
             <span className="font-mono text-xs font-bold text-sky-600 group-hover:underline">
               {o.id.slice(0, 13)}...
             </span>
-            <span className="text-xs text-gray-400 font-mono">
-              {new Date(o.createdAt).toLocaleDateString()}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400 font-mono">
+                {new Date(o.createdAt).toLocaleDateString()}
+              </span>
+              {canDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteOrder(o.id);
+                  }}
+                  className="p-1 text-gray-400 hover:text-red-650 hover:bg-red-50 rounded transition cursor-pointer"
+                  title="Delete Sales Order"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -639,6 +681,10 @@ export default function SalesPage() {
     );
   };
 
+  if (!hasModuleViewPermission(user?.roles, 'sales', overrides)) {
+    return <AccessDenied module="Sales Orders" />;
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* ── Header ── */}
@@ -653,9 +699,6 @@ export default function SalesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Btn variant="ghost" size="sm" onClick={refresh}>
-            <RefreshCw size={14} />
-          </Btn>
           <Btn variant={showSearchBar ? "primary" : "secondary"} size="sm" onClick={() => setShowSearchBar(!showSearchBar)} title="Toggle search bar">
             <Search size={14} />
           </Btn>
@@ -663,9 +706,11 @@ export default function SalesPage() {
             {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
             <span className="ml-1 hidden sm:inline">{viewMode === 'list' ? 'Kanban' : 'List'}</span>
           </Btn>
-          <Btn size="sm" onClick={() => setShowForm(!showForm)}>
-            <Plus size={14} /> New Sales Order
-          </Btn>
+          {canCreate && (
+            <Btn size="sm" onClick={() => setShowForm(!showForm)}>
+              <Plus size={14} /> New Sales Order
+            </Btn>
+          )}
         </div>
       </div>
 
@@ -729,17 +774,20 @@ export default function SalesPage() {
                 value={customer}
                 onChange={(e) => setCustomer(e.target.value)}
                 required
+                disabled={!hasFieldPermission(user?.roles, 'sales', 'Customer', 'create', overrides)}
               />
               <Input
                 label="Customer Address (Vendor Address)"
                 placeholder="e.g. 123 Business Rd, Suite 100"
                 value={customerAddress}
                 onChange={(e) => setCustomerAddress(e.target.value)}
+                disabled={!hasFieldPermission(user?.roles, 'sales', 'Customer Address', 'create', overrides)}
               />
               <Select
                 label="Responsible Person"
                 value={responsiblePersonId}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setResponsiblePersonId(e.target.value)}
+                disabled={!hasFieldPermission(user?.roles, 'sales', 'Sales Person', 'create', overrides)}
               >
                 <option value="">Select responsible person…</option>
                 {usersList
@@ -768,6 +816,7 @@ export default function SalesPage() {
                     label="Product"
                     value={selectedProductId}
                     onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedProductId(e.target.value)}
+                    disabled={!hasFieldPermission(user?.roles, 'sales', 'Product', 'create', overrides)}
                   >
                     <option value="">Select product…</option>
                     {products.map((p) => (
@@ -785,9 +834,10 @@ export default function SalesPage() {
                     placeholder="1"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
+                    disabled={!hasFieldPermission(user?.roles, 'sales', 'Ordered Quantity', 'create', overrides)}
                   />
                 </div>
-                <Btn type="button" variant="secondary" onClick={handleAddDraftItem}>
+                <Btn type="button" variant="secondary" onClick={handleAddDraftItem} disabled={!hasFieldPermission(user?.roles, 'sales', 'Product', 'create', overrides)}>
                   <Plus size={14} /> Add
                 </Btn>
               </div>
@@ -953,6 +1003,18 @@ export default function SalesPage() {
                             <span className="text-xs text-emerald-500 font-medium flex items-center gap-1">
                               <CheckCircle2 size={12} /> Delivered
                             </span>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteOrder(o.id);
+                              }}
+                              className="p-1 text-gray-400 hover:text-red-650 hover:bg-red-50 rounded transition cursor-pointer ml-1"
+                              title="Delete Sales Order"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           )}
                         </div>
                       </td>

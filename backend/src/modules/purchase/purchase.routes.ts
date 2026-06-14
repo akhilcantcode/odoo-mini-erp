@@ -11,5 +11,6 @@ router.get('/:id', authenticate, requirePermission(Module.PURCHASE, PermissionAc
 router.post('/', authenticate, requirePermission(Module.PURCHASE, PermissionAction.CREATE), controller.create);
 router.post('/:id/confirm', authenticate, requirePermission(Module.PURCHASE, PermissionAction.UPDATE), controller.confirm);
 router.post('/:id/receive', authenticate, requirePermission(Module.PURCHASE, PermissionAction.UPDATE), controller.receive);
+router.delete('/:id', authenticate, requirePermission(Module.PURCHASE, PermissionAction.DELETE), controller.delete);
 
 export { router as purchaseRouter };

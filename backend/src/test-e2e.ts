@@ -292,8 +292,9 @@ async function runTests() {
     // 11. Verify Audit Logs
     console.log('\nStep 11: Retrieving Audit Logs...');
     const auditRes = await makeRequest(`${BASE_URL}/audit`, 'GET', undefined, ownerToken);
-    console.log(`Retrieved ${auditRes.body.length} audit logs.`);
-    for (const log of auditRes.body.slice(0, 5)) {
+    const logs = Array.isArray(auditRes.body) ? auditRes.body : (auditRes.body?.data || []);
+    console.log(`Retrieved ${logs.length} audit logs.`);
+    for (const log of logs.slice(0, 5)) {
       console.log(`  [${log.action}] Entity: ${log.entityType} (ID: ${log.entityId})`);
     }
 
