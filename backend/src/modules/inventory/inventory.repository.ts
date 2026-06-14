@@ -10,7 +10,7 @@ export class InventoryRepository {
     const inventories = await prisma.inventory.findMany({
       where: { companyId },
       include: {
-        product: { select: { name: true } },
+        product: { select: { name: true, imageUrl: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -18,6 +18,7 @@ export class InventoryRepository {
     return inventories.map((inv) => ({
       productId: inv.productId,
       productName: inv.product.name,
+      productImageUrl: inv.product.imageUrl,
       onHandQty: inv.onHandQty,
       reservedQty: inv.reservedQty,
       freeQty: inv.onHandQty - inv.reservedQty,
@@ -37,7 +38,7 @@ export class InventoryRepository {
     return prisma.stockLedger.findMany({
       where,
       include: {
-        product: { select: { name: true } },
+        product: { select: { name: true, imageUrl: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

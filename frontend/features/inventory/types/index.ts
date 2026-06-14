@@ -1,6 +1,7 @@
 export interface InventoryItem {
   productId: string;
   productName: string;
+  productImageUrl?: string | null;
   onHandQty: number;
   reservedQty: number;
   freeQty: number;
@@ -12,6 +13,7 @@ export interface StockLedgerEntry {
   productId: string;
   product: {
     name: string;
+    imageUrl?: string | null;
   };
   changeQty: number;
   type: 'SALE' | 'PURCHASE' | 'MANUFACTURE_CONSUME' | 'MANUFACTURE_PRODUCE' | 'ADJUSTMENT';

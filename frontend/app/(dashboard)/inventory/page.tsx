@@ -119,6 +119,29 @@ export default function InventoryPage() {
     return colors[Math.abs(hash) % colors.length];
   };
 
+  // Generate a consistent placeholder image based on product name
+  const getProductPlaceholder = (name: string) => {
+    const placeholders = [
+      'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=400&auto=format&fit=crop&q=60', // brown wooden table/lamp
+      'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&auto=format&fit=crop&q=60', // orange desk / chair
+      'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=400&auto=format&fit=crop&q=60', // modern home workspace
+      'https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=400&auto=format&fit=crop&q=60', // bedroom furniture
+      'https://images.unsplash.com/photo-1581428982868-e410dd047a90?w=400&auto=format&fit=crop&q=60', // modern wood/interior
+      'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=400&auto=format&fit=crop&q=60', // abstract light background
+      'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400&auto=format&fit=crop&q=60', // desk setup
+      'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=400&auto=format&fit=crop&q=60', // wood panels
+      'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=400&auto=format&fit=crop&q=60', // metal/steel structure
+      'https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?w=400&auto=format&fit=crop&q=60', // box with screws/bolts
+      'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=400&auto=format&fit=crop&q=60', // silicon chip
+      'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=400&auto=format&fit=crop&q=60', // computer components
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return placeholders[Math.abs(hash) % placeholders.length];
+  };
+
   // Generate SKU from product ID
   // const getSku = (productId: string, index: number) => {
   //   return `SKU-${(1000 + index).toString()}`;
@@ -382,8 +405,8 @@ export default function InventoryPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {filteredItems.map((i, idx) => {
-                    const initials = getInitials(i.productName);
-                    const avatarColor = getAvatarColor(i.productName);
+                    // const initials = getInitials(i.productName);
+                    // const avatarColor = getAvatarColor(i.productName);
                     // const sku = getSku(i.productId, idx);
                     const isOutOfStock = i.onHandQty === 0;
                     const isLow = i.onHandQty > 0 && i.onHandQty <= 2;
@@ -396,10 +419,12 @@ export default function InventoryPage() {
                       >
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
-                            <div
-                              className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold ${avatarColor} transition-transform duration-200 group-hover:scale-105 flex-shrink-0`}
-                            >
-                              {initials}
+                            <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100 bg-gray-55 transition-transform duration-200 group-hover:scale-105">
+                              <img
+                                src={i.productImageUrl || getProductPlaceholder(i.productName)}
+                                alt={i.productName}
+                                className="w-full h-full object-cover"
+                              />
                             </div>
                             <div>
                               <p className="font-semibold text-gray-900 leading-tight">{i.productName}</p>
@@ -495,8 +520,8 @@ export default function InventoryPage() {
                 <tbody className="divide-y divide-gray-50">
                   {filteredLedger.map((e, idx) => {
                     const productName = e.product?.name || '—';
-                    const initials = productName !== '—' ? getInitials(productName) : '—';
-                    const avatarColor = productName !== '—' ? getAvatarColor(productName) : 'bg-gray-100 text-gray-400';
+                    // const initials = productName !== '—' ? getInitials(productName) : '—';
+                    // const avatarColor = productName !== '—' ? getAvatarColor(productName) : 'bg-gray-100 text-gray-400';
 
                     return (
                       <tr
@@ -506,10 +531,16 @@ export default function InventoryPage() {
                       >
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
-                            <div
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${avatarColor} flex-shrink-0`}
-                            >
-                              {initials}
+                            <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100 bg-gray-55 transition-transform duration-200 group-hover:scale-105">
+                              {productName !== '—' ? (
+                                <img
+                                  src={e.product?.imageUrl || getProductPlaceholder(productName)}
+                                  alt={productName}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-400">—</div>
+                              )}
                             </div>
                             <span className="font-medium text-gray-800">{productName}</span>
                           </div>

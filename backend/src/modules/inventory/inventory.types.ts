@@ -15,8 +15,10 @@ export type AdjustInventoryInput = z.infer<typeof AdjustInventorySchema>;
 export interface InventoryWithFreeQty {
   productId: string;
   productName: string;
+  productImageUrl?: string | null;
   onHandQty: number;
   reservedQty: number;
   freeQty: number;
   updatedAt: Date;
 }
+
