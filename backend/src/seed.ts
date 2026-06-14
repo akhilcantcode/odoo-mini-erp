@@ -152,26 +152,26 @@ async function main() {
   
   // 6.1 Raw materials / Components (Procure: purchase)
   const componentsList = [
-    { name: 'Oak Wood Planks', cost: 12.5, price: 18.0 },
-    { name: 'Pine Wood Boards', cost: 6.0, price: 9.5 },
-    { name: 'Steel Framing L', cost: 22.0, price: 30.0 },
-    { name: 'Foam Padding', cost: 4.5, price: 7.0 },
-    { name: 'Premium Leather Roll', cost: 85.0, price: 120.0 },
-    { name: 'Fabric Mesh Panel', cost: 5.0, price: 8.0 },
-    { name: 'Screws & Bolts Box', cost: 2.5, price: 4.5 },
-    { name: 'LED Strip MultiColor', cost: 8.0, price: 15.0 },
-    { name: 'Microprocessor Chip v3', cost: 18.5, price: 35.0 },
-    { name: 'Controller Unit v1', cost: 14.0, price: 25.0 },
-    { name: 'Electric Motor 12V', cost: 35.0, price: 60.0 },
-    { name: 'Power Adapter 24W', cost: 7.5, price: 12.0 },
-    { name: 'ABS Plastic Casing', cost: 3.0, price: 5.5 },
-    { name: 'Heating Element', cost: 11.5, price: 20.0 },
-    { name: 'Water Pump Mini', cost: 9.0, price: 16.0 },
-    { name: 'Glass Panel Beveled', cost: 15.0, price: 25.0 },
-    { name: 'Thermostat Chip', cost: 6.5, price: 12.0 },
-    { name: 'Hinge Metal Heavy', cost: 1.5, price: 2.8 },
-    { name: 'Rubber Seals Pack', cost: 2.0, price: 3.5 },
-    { name: 'Gas Lift Cylinder', cost: 12.0, price: 22.0 },
+    { name: 'Oak Wood Planks', cost: 12.5, price: 18.0, imageUrl: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Pine Wood Boards', cost: 6.0, price: 9.5, imageUrl: 'https://images.unsplash.com/photo-1541123437800-1bb1317badc2?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Steel Framing L', cost: 22.0, price: 30.0, imageUrl: 'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Foam Padding', cost: 4.5, price: 7.0, imageUrl: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Premium Leather Roll', cost: 85.0, price: 120.0, imageUrl: 'https://images.unsplash.com/photo-1524295988346-04879a27f56b?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Fabric Mesh Panel', cost: 5.0, price: 8.0, imageUrl: 'https://images.unsplash.com/photo-1585776245991-cf89dd7fc73a?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Screws & Bolts Box', cost: 2.5, price: 4.5, imageUrl: 'https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?w=200&auto=format&fit=crop&q=60' },
+    { name: 'LED Strip MultiColor', cost: 8.0, price: 15.0, imageUrl: 'https://images.unsplash.com/photo-1565814636199-ae8133055c1c?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Microprocessor Chip v3', cost: 18.5, price: 35.0, imageUrl: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Controller Unit v1', cost: 14.0, price: 25.0, imageUrl: 'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Electric Motor 12V', cost: 35.0, price: 60.0, imageUrl: 'https://images.unsplash.com/photo-1590986424791-2355385d0442?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Power Adapter 24W', cost: 7.5, price: 12.0, imageUrl: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=200&auto=format&fit=crop&q=60' },
+    { name: 'ABS Plastic Casing', cost: 3.0, price: 5.5, imageUrl: 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Heating Element', cost: 11.5, price: 20.0, imageUrl: 'https://images.unsplash.com/photo-1563720223185-11003d516935?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Water Pump Mini', cost: 9.0, price: 16.0, imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Glass Panel Beveled', cost: 15.0, price: 25.0, imageUrl: 'https://images.unsplash.com/photo-1561715276-a2d087060f1d?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Thermostat Chip', cost: 6.5, price: 12.0, imageUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Hinge Metal Heavy', cost: 1.5, price: 2.8, imageUrl: 'https://images.unsplash.com/photo-1590486803833-1c5dc8ddd4c8?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Rubber Seals Pack', cost: 2.0, price: 3.5, imageUrl: 'https://images.unsplash.com/photo-1605557202138-097824c3f9f4?w=200&auto=format&fit=crop&q=60' },
+    { name: 'Gas Lift Cylinder', cost: 12.0, price: 22.0, imageUrl: 'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=200&auto=format&fit=crop&q=60' },
   ];
 
   const seededComponents: Record<string, any> = {};
@@ -183,6 +183,7 @@ async function main() {
         salesPrice: c.price,
         procurementType: ProcurementType.purchase,
         procureOnDemand: false,
+        imageUrl: c.imageUrl,
         companyId: company.id,
       },
     });
@@ -212,16 +213,16 @@ async function main() {
 
   // 6.2 Finished Goods (Procure: manufacture)
   const finishedList = [
-    { name: 'Oak Dining Table', cost: 120.0, price: 399.0 },
-    { name: 'Pine Bookshelf Flat', cost: 45.0, price: 119.0 },
-    { name: 'Ergonomic Office Chair', cost: 80.0, price: 249.0 },
-    { name: 'Premium Leather Sofa', cost: 450.0, price: 1199.0 },
-    { name: 'Electric Standing Desk', cost: 180.0, price: 499.0 },
-    { name: 'Smart LED Desk Lamp', cost: 35.0, price: 89.0 },
-    { name: 'Smart Digital Thermostat', cost: 40.0, price: 149.0 },
-    { name: 'Smart Coffee Maker Plus', cost: 60.0, price: 199.0 },
-    { name: 'Steel File Cabinet', cost: 55.0, price: 149.0 },
-    { name: 'Glass Top Coffee Table', cost: 70.0, price: 189.0 },
+    { name: 'Oak Dining Table', cost: 120.0, price: 399.0, imageUrl: 'https://images.unsplash.com/photo-1577140917170-285929fb55b7?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Pine Bookshelf Flat', cost: 45.0, price: 119.0, imageUrl: 'https://images.unsplash.com/photo-1594620302200-9a762244a156?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Ergonomic Office Chair', cost: 80.0, price: 249.0, imageUrl: 'https://images.unsplash.com/photo-1505797149-43b0069ec26b?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Premium Leather Sofa', cost: 450.0, price: 1199.0, imageUrl: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Electric Standing Desk', cost: 180.0, price: 499.0, imageUrl: 'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Smart LED Desk Lamp', cost: 35.0, price: 89.0, imageUrl: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Smart Digital Thermostat', cost: 40.0, price: 149.0, imageUrl: 'https://images.unsplash.com/photo-1545259741-2ea3ebf61fa3?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Smart Coffee Maker Plus', cost: 60.0, price: 199.0, imageUrl: 'https://images.unsplash.com/photo-1517256064527-09c53b2d0bc6?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Steel File Cabinet', cost: 55.0, price: 149.0, imageUrl: 'https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?w=400&auto=format&fit=crop&q=80' },
+    { name: 'Glass Top Coffee Table', cost: 70.0, price: 189.0, imageUrl: 'https://images.unsplash.com/photo-1532372320572-cda25653a26d?w=400&auto=format&fit=crop&q=80' },
   ];
 
   const seededFinished: Record<string, any> = {};
@@ -233,6 +234,7 @@ async function main() {
         salesPrice: f.price,
         procurementType: ProcurementType.manufacture,
         procureOnDemand: f.name === 'Electric Standing Desk' || f.name === 'Premium Leather Sofa', // procure standing desk/sofa on demand
+        imageUrl: f.imageUrl,
         companyId: company.id,
       },
     });

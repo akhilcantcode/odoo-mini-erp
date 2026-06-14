@@ -69,6 +69,7 @@ export class ProductRepository {
           costPrice: data.costPrice,
           procurementType: data.procurementType,
           procureOnDemand: data.procureOnDemand,
+          imageUrl: data.imageUrl,
           companyId,
         },
       });
@@ -99,6 +100,7 @@ export class ProductRepository {
         ...(data.costPrice !== undefined && { costPrice: data.costPrice }),
         ...(data.procurementType && { procurementType: data.procurementType }),
         ...(data.procureOnDemand !== undefined && { procureOnDemand: data.procureOnDemand }),
+        ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl }),
       },
     });
   }
@@ -314,6 +316,7 @@ export class ProductRepository {
             costPrice: p.costPrice,
             procurementType: p.procurementType,
             procureOnDemand: p.procureOnDemand ?? false,
+            imageUrl: p.imageUrl,
             companyId,
           },
         });

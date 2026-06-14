@@ -6,6 +6,7 @@ export interface Product extends BaseEntity {
   costPrice: number | null;
   procurementType: 'purchase' | 'manufacture';
   procureOnDemand: boolean;
+  imageUrl?: string | null;
   inventory?: {
     onHandQty: number;
     reservedQty: number;

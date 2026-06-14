@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  TrendingUp, 
-  DollarSign, 
-  Users, 
-  RefreshCw, 
-  ShoppingBag, 
+import {
+  TrendingUp,
+  DollarSign,
+  Users,
+  RefreshCw,
+  ShoppingBag,
   AlertTriangle,
   ArrowRight,
   Sparkles,
@@ -32,7 +32,7 @@ function KpiSparkline({ data, gradientId }: { data: { v: number }[]; gradientId:
   const max = Math.max(...data.map(d => d.v));
   const min = Math.min(...data.map(d => d.v));
   const range = max - min || 1;
-  
+
   const points = data.map((d, i) => ({
     x: (i / (data.length - 1)) * width,
     y: height - ((d.v - min) / range) * (height - 8) - 4
@@ -108,7 +108,7 @@ export default function DashboardOverview() {
   const totalRevenue = stats?.salesTotal ?? 0;
   const totalOrders = salesOrders.length;
   const totalStockVal = stats?.inventoryValue ?? 0;
-  
+
   // Unique customers count
   const uniqueCustomers = Array.from(new Set(salesOrders.map(o => o.customerName))).length;
 
@@ -171,7 +171,7 @@ export default function DashboardOverview() {
   const monthlyRevenueData = React.useMemo(() => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentMonth = new Date().getMonth();
-    
+
     // Get last 6 months
     const last6Months: { month: string; monthIndex: number; revenue: number; orders: number }[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -247,7 +247,7 @@ export default function DashboardOverview() {
     if (!lineChartRef.current) return;
     const rect = lineChartRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    
+
     // Map X to the nearest data point index
     const chartWidth = rect.width - 80; // Accounting for left/right paddings
     const step = chartWidth / (monthlyRevenueData.length - 1);
@@ -310,7 +310,7 @@ export default function DashboardOverview() {
   };
 
   const linePathD = computeBezierPath(linePoints);
-  const fillPathD = linePoints.length > 0 
+  const fillPathD = linePoints.length > 0
     ? `${linePathD} L ${linePoints[linePoints.length - 1].x},${chartPaddingTop + chartInnerHeight} L ${linePoints[0].x},${chartPaddingTop + chartInnerHeight} Z`
     : '';
 
@@ -319,7 +319,7 @@ export default function DashboardOverview() {
 
   return (
     <div className="space-y-6 animate-fade-in font-sans">
-      
+
       {/* Header Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -341,7 +341,7 @@ export default function DashboardOverview() {
 
       {/* Glance KPI Cards Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        
+
         {/* Revenue Card */}
         <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md">
           <div className="p-5">
@@ -445,218 +445,18 @@ export default function DashboardOverview() {
 
       {/* Row 2: Monthly Revenue & Division Donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        
+
         {/* Monthly Revenue Chart (takes 2/3) */}
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm lg:col-span-2 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Monthly Revenue</h2>
-                <p className="mt-0.5 text-xs text-gray-400">Total gross invoice value over time</p>
-              </div>
-              <div className="flex items-center gap-1 bg-gray-50 p-0.5 rounded-lg border border-gray-100">
-                {['3M', '6 Months', '1Y'].map(time => (
-                  <span key={time} className={`px-2 py-0.5 text-[10px] font-semibold rounded ${time === '6 Months' ? 'text-sky-700 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700 cursor-pointer transition'}`}>
-                    {time}
-                  </span>
-                ))}
-              </div>
-            </div>
 
-            {/* Interactive SVG Chart */}
-            <div className="relative mt-2" style={{ minHeight: 260 }}>
-              <svg 
-                ref={lineChartRef}
-                viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-                className="w-full h-auto overflow-visible select-none cursor-crosshair"
-                onMouseMove={handleLineMouseMove}
-                onMouseLeave={handleLineMouseLeave}
-              >
-                <defs>
-                  <linearGradient id="chart-line-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0284c7" stopOpacity="0.2"/>
-                    <stop offset="100%" stopColor="#0284c7" stopOpacity="0"/>
-                  </linearGradient>
-                </defs>
-
-                {/* Grid Lines */}
-                {[0, 0.25, 0.5, 0.75, 1].map((val, idx) => {
-                  const y = chartPaddingTop + val * chartInnerHeight;
-                  const labelValue = Math.round(maxRevenue - val * revRange);
-                  return (
-                    <g key={idx}>
-                      <line 
-                        x1={chartPaddingLeft} 
-                        y1={y} 
-                        x2={svgWidth - chartPaddingRight} 
-                        y2={y} 
-                        stroke="#e2e8f0" 
-                        strokeWidth="1" 
-                        strokeDasharray="3,3"
-                      />
-                      <text 
-                        x={chartPaddingLeft - 10} 
-                        y={y + 4} 
-                        textAnchor="end" 
-                        className="text-[11px] fill-gray-400"
-                        style={{ fontSize: 12 }}
-                      >
-                        ${labelValue >= 1000 ? `${(labelValue / 1000).toFixed(0)}k` : labelValue}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* X-axis labels */}
-                {monthlyRevenueData.map((d, idx) => {
-                  const x = chartPaddingLeft + (idx / (monthlyRevenueData.length - 1)) * chartInnerWidth;
-                  return (
-                    <text 
-                      key={idx}
-                      x={x} 
-                      y={svgHeight - 6} 
-                      textAnchor="middle" 
-                      className="fill-gray-400"
-                      style={{ fontSize: 12 }}
-                    >
-                      {d.month}
-                    </text>
-                  );
-                })}
-
-                {/* Area Fill */}
-                <path d={fillPathD} fill="url(#chart-line-grad)" />
-
-                {/* Line Path */}
-                <path d={linePathD} fill="none" stroke="#0284c7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-
-                {/* Data point indicators */}
-                {linePoints.map((p, idx) => (
-                  <circle 
-                    key={idx}
-                    cx={p.x}
-                    cy={p.y}
-                    r={hoveredMonthIndex === idx ? 6 : 4}
-                    fill={hoveredMonthIndex === idx ? '#0284c7' : '#ffffff'}
-                    stroke="#0284c7"
-                    strokeWidth={2}
-                    className="transition-all duration-150"
-                  />
-                ))}
-
-                {/* Hover line & tooltip element inside SVG */}
-                {hoveredMonthIndex !== null && (
-                  <g>
-                    <line 
-                      x1={linePoints[hoveredMonthIndex].x} 
-                      y1={chartPaddingTop} 
-                      x2={linePoints[hoveredMonthIndex].x} 
-                      y2={chartPaddingTop + chartInnerHeight} 
-                      stroke="#0284c7" 
-                      strokeWidth="1" 
-                      strokeDasharray="3,3" 
-                    />
-                  </g>
-                )}
-              </svg>
-
-              {/* Float HTML Tooltip */}
-              {hoveredMonthIndex !== null && (
-                <div 
-                  className="absolute z-10 pointer-events-none bg-white rounded-xl p-3 shadow-xl border border-gray-200 text-xs font-sans min-w-[120px]"
-                  style={{ 
-                    left: `${(lineTooltipPos.x / svgWidth) * 100}%`, 
-                    top: `${(lineTooltipPos.y / svgHeight) * 100}%`,
-                    transform: 'translate(-50%, -100%)',
-                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)'
-                  }}
-                >
-                  <p className="font-semibold text-gray-800">{monthlyRevenueData[hoveredMonthIndex].month}</p>
-                  <p className="text-sky-500 font-medium mt-1">
-                    Revenue : ${monthlyRevenueData[hoveredMonthIndex].revenue >= 1000 ? `$${(monthlyRevenueData[hoveredMonthIndex].revenue / 1000).toFixed(0)}k` : `$${monthlyRevenueData[hoveredMonthIndex].revenue}`}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
 
         {/* Division Donut Chart (takes 1/3) */}
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">Sales by Division</h2>
-            <p className="mt-0.5 text-xs text-gray-400">Proportion of business unit contributions</p>
-            
-            <div className="relative flex items-center justify-center" style={{ height: 200 }}>
-              <svg viewBox="0 0 200 200" className="w-[200px] h-[200px] overflow-visible">
-                {divisionsData.map((d, idx) => {
-                  const r = 72;
-                  const circ = 2 * Math.PI * r;
-                  // Leave a small gap between segments
-                  const gapPercent = 0.8;
-                  const segPercent = d.percentage - gapPercent;
-                  const strokeDashoffset = circ * (1 - segPercent / 100);
-                  const strokeWidth = hoveredDivisionIndex === idx ? 22 : 18;
-                  const startAngle = ((accumulatedAngle + gapPercent / 2) / 100) * 360 - 90;
-                  accumulatedAngle += d.percentage;
-                  
-                  return (
-                    <circle 
-                      key={idx}
-                      cx="100"
-                      cy="100"
-                      r={r}
-                      fill="none"
-                      stroke={d.color}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={circ}
-                      strokeDashoffset={strokeDashoffset}
-                      transform={`rotate(${startAngle} 100 100)`}
-                      strokeLinecap="round"
-                      className="transition-all duration-200 cursor-pointer"
-                      onMouseEnter={() => setHoveredDivisionIndex(idx)}
-                      onMouseLeave={() => setHoveredDivisionIndex(null)}
-                    />
-                  );
-                })}
 
-                {/* Total text in center */}
-                <g className="pointer-events-none">
-                  <text x="100" y="92" textAnchor="middle" dominantBaseline="middle" className="fill-gray-400" style={{ fontSize: '9px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-                    TOTAL SALES
-                  </text>
-                  <text x="100" y="112" textAnchor="middle" dominantBaseline="middle" className="fill-gray-900" style={{ fontSize: '20px', fontWeight: 600 }}>
-                    {totalDivisionValue === 0 ? '$12.0k' : `$${(totalDivisionValue / 1000).toFixed(1)}k`}
-                  </text>
-                </g>
-              </svg>
-            </div>
-          </div>
-
-          {/* Division Legend */}
-          <ul className="mt-5 grid w-full grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            {divisionsData.map((d, idx) => (
-              <li 
-                key={idx} 
-                className="flex items-center gap-2"
-                onMouseEnter={() => setHoveredDivisionIndex(idx)}
-                onMouseLeave={() => setHoveredDivisionIndex(null)}
-              >
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
-                <span className="min-w-0 flex-1 truncate text-gray-800">{d.name}</span>
-                <span className="text-gray-400 tabular-nums">
-                  {d.percentage.toFixed(0)}%
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
 
       </div>
 
       {/* Row 3: Recent Orders & Side Panel (Low stock + Top Categories) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
-        
+
         {/* Recent Orders (takes 2/3) */}
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm lg:col-span-2 flex flex-col">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -696,8 +496,8 @@ export default function DashboardOverview() {
                 <tbody className="divide-y divide-gray-50">
                   {recentOrders.map((order) => {
                     const itemsCount = order.items?.reduce((acc, it) => acc + it.quantity, 0) || 0;
-                    const date = new Date(order.createdAt).toLocaleDateString(undefined, { 
-                      month: 'short', 
+                    const date = new Date(order.createdAt).toLocaleDateString(undefined, {
+                      month: 'short',
                       day: 'numeric',
                       hour: '2-digit',
                       minute: '2-digit'
@@ -733,7 +533,7 @@ export default function DashboardOverview() {
               </table>
             </div>
           )}
-          
+
           <div className="px-5 py-3.5 border-t border-gray-100 flex justify-end">
             <span className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:text-sky-700 hover:underline transition cursor-pointer">
               Go to Sales Module <ArrowRight className="h-3 w-3" />
@@ -743,13 +543,13 @@ export default function DashboardOverview() {
 
         {/* Side Panel (Top Categories & Low Stock Alerts) */}
         <div className="flex flex-col gap-6 lg:col-span-1">
-          
+
           {/* Top Categories */}
           <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm flex flex-col justify-between flex-1">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Top Categories</h2>
               <p className="text-xs text-gray-400">Highest revenue generated by segment</p>
-              
+
               <ul className="mt-4 divide-y divide-gray-100">
                 {categorySales.map((cat, idx) => (
                   <li key={idx} className="flex items-center justify-between py-3 text-sm">
@@ -783,7 +583,7 @@ export default function DashboardOverview() {
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
                 </span>
               </div>
-              
+
               {lowStockItems.length === 0 ? (
                 <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-6 text-center">
                   <div className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
@@ -797,8 +597,8 @@ export default function DashboardOverview() {
               ) : (
                 <div className="space-y-2 mt-5">
                   {lowStockItems.map((item, idx) => (
-                    <div 
-                      key={idx} 
+                    <div
+                      key={idx}
                       className="flex items-center justify-between p-2.5 rounded-lg bg-rose-50/30 border border-rose-100/50 hover:bg-rose-50/50 transition"
                     >
                       <div className="flex flex-col min-w-0 max-w-[70%]">

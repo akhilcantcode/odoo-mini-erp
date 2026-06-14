@@ -114,6 +114,7 @@ model Product {
   costPrice       Float?
   procurementType ProcurementType
   procureOnDemand Boolean         @default(false)
+  imageUrl        String?
   createdAt       DateTime        @default(now())
 
   companyId String

@@ -26,6 +26,7 @@ export async function createProduct(data: {
   costPrice?: number | null;
   procurementType: 'purchase' | 'manufacture';
   procureOnDemand?: boolean;
+  imageUrl?: string | null;
 }): Promise<Product> {
   return fetchApi('/products', {
     method: 'POST',
@@ -41,6 +42,7 @@ export async function updateProduct(
     costPrice?: number | null;
     procurementType?: 'purchase' | 'manufacture';
     procureOnDemand?: boolean;
+    imageUrl?: string | null;
   }
 ): Promise<Product> {
   return fetchApi(`/products/${id}`, {
@@ -86,6 +88,7 @@ export async function importProducts(products: {
   costPrice?: number | null;
   procurementType: 'purchase' | 'manufacture';
   procureOnDemand?: boolean;
+  imageUrl?: string | null;
 }[]): Promise<{ count: number }> {
   return fetchApi('/products/import', {
     method: 'POST',

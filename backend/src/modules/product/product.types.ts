@@ -8,6 +8,7 @@ export const CreateProductSchema = z.object({
   costPrice: z.number().nonnegative().nullable().optional(),
   procurementType: z.enum(['purchase', 'manufacture']),
   procureOnDemand: z.boolean().optional().default(false),
+  imageUrl: z.string().nullable().optional(),
 });
 
 export const UpdateProductSchema = z.object({
@@ -16,6 +17,7 @@ export const UpdateProductSchema = z.object({
   costPrice: z.number().nonnegative().nullable().optional(),
   procurementType: z.enum(['purchase', 'manufacture']).optional(),
   procureOnDemand: z.boolean().optional(),
+  imageUrl: z.string().nullable().optional(),
 });
 
 export const SetBomItemSchema = z.object({

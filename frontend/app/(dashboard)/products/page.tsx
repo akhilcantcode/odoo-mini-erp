@@ -33,6 +33,7 @@ export default function ProductsPage() {
     costPrice: number | null;
     procurementType: 'purchase' | 'manufacture';
     procureOnDemand: boolean;
+    imageUrl: string | null;
     errors: string[];
   }[]>([]);
   const [importing, setImporting] = useState(false);
@@ -42,6 +43,7 @@ export default function ProductsPage() {
   const [fSales, setFSales] = useState('');
   const [fCost, setFCost] = useState('');
   const [fType, setFType] = useState<'purchase' | 'manufacture'>('purchase');
+  const [fImage, setFImage] = useState('');
   const [saving, setSaving] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -113,6 +115,7 @@ export default function ProductsPage() {
       const costIdx = headers.indexOf('cost price');
       const procurementIdx = headers.indexOf('procurement');
       const demandIdx = headers.indexOf('procure on demand');
+      const imageIdx = headers.findIndex(h => h === 'image url' || h === 'image');
 
       if (nameIdx === -1 || procurementIdx === -1) {
         toast('CSV must contain at least "Name" and "Procurement" columns', 'error');
@@ -132,6 +135,7 @@ export default function ProductsPage() {
         const rawCost = costIdx !== -1 ? row[costIdx]?.trim() : '';
         const rawProcurement = row[procurementIdx]?.trim().toLowerCase() || '';
         const rawDemand = demandIdx !== -1 ? row[demandIdx]?.trim().toLowerCase() : '';
+        const rawImage = imageIdx !== -1 ? row[imageIdx]?.trim() : '';
 
         if (!rawName) {
           errors.push('Name is required');
@@ -177,6 +181,7 @@ export default function ProductsPage() {
           costPrice,
           procurementType,
           procureOnDemand,
+          imageUrl: rawImage || null,
           errors
         });
       }
@@ -202,7 +207,8 @@ export default function ProductsPage() {
         salesPrice: item.salesPrice,
         costPrice: item.costPrice,
         procurementType: item.procurementType,
-        procureOnDemand: item.procureOnDemand
+        procureOnDemand: item.procureOnDemand,
+        imageUrl: item.imageUrl
       }));
 
       await importProducts(payload);
@@ -226,12 +232,14 @@ export default function ProductsPage() {
         costPrice: fCost ? parseFloat(fCost) : null,
         procurementType: fType,
         procureOnDemand: false,
+        imageUrl: fImage || null,
       });
       toast('Product created', 'success');
       setShowForm(false);
       setFName('');
       setFSales('');
       setFCost('');
+      setFImage('');
       refresh();
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Failed', 'error');
@@ -314,78 +322,90 @@ export default function ProductsPage() {
     return (
       <div
         key={p.id}
-        className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md hover:border-sky-300 transition-all duration-200 flex flex-col justify-between min-h-[180px] group"
+        className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-sky-300 transition-all duration-200 flex flex-col justify-between min-h-[280px] group overflow-hidden"
       >
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${avatarColor} flex-shrink-0`}>
-              {initials}
-            </div>
-            <div>
-              <span className="font-bold text-gray-900 text-sm block leading-tight">
-                {p.name}
-              </span>
-              <span className="text-[10px] text-gray-400 block mt-0.5">
-                {p.procurementType === 'manufacture' ? 'Manufactured' : 'Purchased'} Item
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-50">
-            <div>
-              <span className="text-[10px] text-gray-400 block uppercase font-medium">Sales Price</span>
-              <span className="font-semibold text-sm text-gray-800 tabular-nums">
-                {p.salesPrice != null ? (
-                  <span className="inline-flex items-center gap-0.5">
-                    <DollarSign size={12} className="text-gray-400" />
-                    {p.salesPrice.toFixed(2)}
-                  </span>
-                ) : (
-                  <span className="text-gray-300">—</span>
-                )}
-              </span>
-            </div>
-            <div>
-              <span className="text-[10px] text-gray-400 block uppercase font-medium">Cost Price</span>
-              <span className="font-medium text-sm text-gray-500 tabular-nums">
-                {p.costPrice != null ? (
-                  <span className="inline-flex items-center gap-0.5">
-                    <DollarSign size={12} className="text-gray-400" />
-                    {p.costPrice.toFixed(2)}
-                  </span>
-                ) : (
-                  <span className="text-gray-300">—</span>
-                )}
-              </span>
-            </div>
-          </div>
+        <div className="h-28 w-full overflow-hidden border-b border-gray-100 relative bg-gray-50 flex-shrink-0">
+          <img
+            src={p.imageUrl || "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=400&auto=format&fit=crop&q=60"}
+            alt={p.name}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
         </div>
 
-        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-          <div className="inline-flex items-center gap-1.5">
-            <span
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                isOutOfStock ? 'bg-red-400' : isLow ? 'bg-amber-400' : 'bg-emerald-400'
-              }`}
-            />
-            <span className="text-xs text-gray-500">
-              Stock: <span className={`font-semibold tabular-nums ${isOutOfStock ? 'text-red-600' : 'text-gray-800'}`}>{onHand}</span>
-            </span>
+        <div className="p-4 flex-1 flex flex-col justify-between">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              {!p.imageUrl && (
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${avatarColor} flex-shrink-0`}>
+                  {initials}
+                </div>
+              )}
+              <div className="min-w-0">
+                <span className="font-bold text-gray-900 text-sm block leading-tight truncate" title={p.name}>
+                  {p.name}
+                </span>
+                <span className="text-[10px] text-gray-400 block mt-0.5">
+                  {p.procurementType === 'manufacture' ? 'Manufactured' : 'Purchased'} Item
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-50">
+              <div>
+                <span className="text-[10px] text-gray-400 block uppercase font-medium">Sales Price</span>
+                <span className="font-semibold text-sm text-gray-800 tabular-nums">
+                  {p.salesPrice != null ? (
+                    <span className="inline-flex items-center gap-0.5">
+                      <DollarSign size={12} className="text-gray-400" />
+                      {p.salesPrice.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-300">—</span>
+                  )}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-gray-400 block uppercase font-medium">Cost Price</span>
+                <span className="font-medium text-sm text-gray-500 tabular-nums">
+                  {p.costPrice != null ? (
+                    <span className="inline-flex items-center gap-0.5">
+                      <DollarSign size={12} className="text-gray-400" />
+                      {p.costPrice.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-300">—</span>
+                  )}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <StatusBadge status={p.procurementType} />
-            {canDelete && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteProduct(p.id);
-                }}
-                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
-                title="Delete Product"
-              >
-                <Trash2 size={14} />
-              </button>
-            )}
+
+          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+            <div className="inline-flex items-center gap-1.5">
+              <span
+                className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  isOutOfStock ? 'bg-red-400' : isLow ? 'bg-amber-400' : 'bg-emerald-400'
+                }`}
+              />
+              <span className="text-xs text-gray-500">
+                Stock: <span className={`font-semibold tabular-nums ${isOutOfStock ? 'text-red-600' : 'text-gray-800'}`}>{onHand}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <StatusBadge status={p.procurementType} />
+              {canDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteProduct(p.id);
+                  }}
+                  className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
+                  title="Delete Product"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -565,7 +585,7 @@ export default function ProductsPage() {
             </div>
             <h3 className="text-sm font-semibold text-gray-800">New Product</h3>
           </div>
-          <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+          <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
             <Input
               label="Product Name"
               placeholder="e.g. Oak Table"
@@ -591,6 +611,13 @@ export default function ProductsPage() {
               value={fCost}
               onChange={(e) => setFCost(e.target.value)}
               disabled={!hasFieldPermission(user?.roles, 'product', 'Cost Price', 'create', overrides)}
+            />
+            <Input
+              label="Image URL"
+              placeholder="https://images.unsplash.com/..."
+              value={fImage}
+              onChange={(e) => setFImage(e.target.value)}
+              disabled={!hasFieldPermission(user?.roles, 'product', 'Product', 'create', overrides)}
             />
             <Select
               label="Procurement"
@@ -661,10 +688,12 @@ export default function ProductsPage() {
                     >
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
-                          <div
-                            className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold ${avatarColor} transition-transform duration-200 group-hover:scale-105 flex-shrink-0`}
-                          >
-                            {initials}
+                          <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100 bg-gray-55 transition-transform duration-200 group-hover:scale-105">
+                            <img
+                              src={p.imageUrl || "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=80&auto=format&fit=crop&q=60"}
+                              alt={p.name}
+                              className="w-full h-full object-cover"
+                            />
                           </div>
                           <div>
                             <p className="font-semibold text-gray-900 leading-tight">{p.name}</p>
@@ -776,8 +805,9 @@ export default function ProductsPage() {
                   <li><strong>Sales Price</strong> (optional): Non-negative float.</li>
                   <li><strong>Cost Price</strong> (optional): Non-negative float.</li>
                   <li><strong>Procure on Demand</strong> (optional): <code>true</code> or <code>false</code>.</li>
+                  <li><strong>Image URL</strong> (optional): Link to product image.</li>
                 </ul>
-                <p className="text-[10px] text-sky-600 pt-1">Example: <code>Name,Procurement,Sales Price,Cost Price,Procure on Demand</code></p>
+                <p className="text-[10px] text-sky-600 pt-1">Example: <code>Name,Procurement,Sales Price,Cost Price,Procure on Demand,Image URL</code></p>
               </div>
 
               {/* File Select */}
@@ -817,6 +847,7 @@ export default function ProductsPage() {
                           <th className="px-4 py-2 text-right">Sales Price</th>
                           <th className="px-4 py-2 text-right">Cost Price</th>
                           <th className="px-4 py-2 text-center">On Demand</th>
+                          <th className="px-4 py-2 text-center">Image</th>
                           <th className="px-4 py-2">Validation</th>
                         </tr>
                       </thead>
@@ -832,6 +863,15 @@ export default function ProductsPage() {
                             <td className="px-4 py-2.5 text-right font-mono">${item.salesPrice !== null ? item.salesPrice.toFixed(2) : '-'}</td>
                             <td className="px-4 py-2.5 text-right font-mono">${item.costPrice !== null ? item.costPrice.toFixed(2) : '-'}</td>
                             <td className="px-4 py-2.5 text-center">{item.procureOnDemand ? 'Yes' : 'No'}</td>
+                            <td className="px-4 py-2.5 text-center">
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded border border-gray-150 overflow-hidden bg-gray-50 mx-auto">
+                                <img
+                                  src={item.imageUrl || "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=80&auto=format&fit=crop&q=60"}
+                                  alt="preview"
+                                  className="w-full h-full object-cover"
+                                />
+                              </span>
+                            </td>
                             <td className="px-4 py-2.5">
                               {item.errors.length > 0 ? (
                                 <span className="text-red-500 text-[10px] font-medium leading-none block">{item.errors.join(', ')}</span>
