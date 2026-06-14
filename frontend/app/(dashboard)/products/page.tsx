@@ -287,6 +287,29 @@ export default function ProductsPage() {
     return colors[Math.abs(hash) % colors.length];
   };
 
+  // Generate a consistent placeholder image based on product name
+  const getProductPlaceholder = (name: string) => {
+    const placeholders = [
+      'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=400&auto=format&fit=crop&q=60', // brown wooden table/lamp
+      'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&auto=format&fit=crop&q=60', // orange desk / chair
+      'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=400&auto=format&fit=crop&q=60', // modern home workspace
+      'https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=400&auto=format&fit=crop&q=60', // bedroom furniture
+      'https://images.unsplash.com/photo-1581428982868-e410dd047a90?w=400&auto=format&fit=crop&q=60', // modern wood/interior
+      'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=400&auto=format&fit=crop&q=60', // abstract light background
+      'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400&auto=format&fit=crop&q=60', // desk setup
+      'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=400&auto=format&fit=crop&q=60', // wood panels
+      'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=400&auto=format&fit=crop&q=60', // metal/steel structure
+      'https://images.unsplash.com/photo-1586864387967-d02ef85d93e8?w=400&auto=format&fit=crop&q=60', // box with screws/bolts
+      'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=400&auto=format&fit=crop&q=60', // silicon chip
+      'https://images.unsplash.com/photo-1555664424-778a1e5e1b48?w=400&auto=format&fit=crop&q=60', // computer components
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return placeholders[Math.abs(hash) % placeholders.length];
+  };
+
   // Format sync time
   const formatSyncTime = () => {
     if (!lastSyncTime) return '';
@@ -324,9 +347,9 @@ export default function ProductsPage() {
         key={p.id}
         className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-sky-300 transition-all duration-200 flex flex-col justify-between min-h-[280px] group overflow-hidden"
       >
-        <div className="h-28 w-full overflow-hidden border-b border-gray-100 relative bg-gray-50 flex-shrink-0">
+        <div className="h-28 w-full overflow-hidden border-b border-gray-100 relative bg-gray-55 flex-shrink-0">
           <img
-            src={p.imageUrl || "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=400&auto=format&fit=crop&q=60"}
+            src={p.imageUrl || getProductPlaceholder(p.name)}
             alt={p.name}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
@@ -690,7 +713,7 @@ export default function ProductsPage() {
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100 bg-gray-55 transition-transform duration-200 group-hover:scale-105">
                             <img
-                              src={p.imageUrl || "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=80&auto=format&fit=crop&q=60"}
+                              src={p.imageUrl || getProductPlaceholder(p.name)}
                               alt={p.name}
                               className="w-full h-full object-cover"
                             />
@@ -866,7 +889,7 @@ export default function ProductsPage() {
                             <td className="px-4 py-2.5 text-center">
                               <span className="inline-flex items-center justify-center w-6 h-6 rounded border border-gray-150 overflow-hidden bg-gray-50 mx-auto">
                                 <img
-                                  src={item.imageUrl || "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=80&auto=format&fit=crop&q=60"}
+                                  src={item.imageUrl || getProductPlaceholder(item.name)}
                                   alt="preview"
                                   className="w-full h-full object-cover"
                                 />
