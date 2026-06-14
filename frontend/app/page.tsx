@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../store/authStore';
 import AuthScreen from '../components/AuthScreen';
-import { Factory, ArrowRight, X, ChevronRight, Activity, TrendingUp, Layers, HelpCircle, Shield, Menu } from 'lucide-react';
+import { Factory, ArrowRight, X, ChevronRight, Activity, TrendingUp, Layers } from 'lucide-react';
 import { Btn } from '../components/ui';
 
 export default function LandingPage() {
@@ -12,10 +12,14 @@ export default function LandingPage() {
   const { token } = useAuthStore();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [activeNav, setActiveNav] = useState('features');
+  // Defer auth-aware rendering to client to avoid SSR/client hydration mismatch
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
-  // If already authenticated, CTA buttons should automatically redirect to dashboard
+  const isAuthed = mounted && !!token;
+
   const handleCTA = () => {
-    if (token) {
+    if (isAuthed) {
       router.push('/dashboard');
     } else {
       setShowAuthModal(true);
@@ -77,9 +81,9 @@ export default function LandingPage() {
           ))}
         </nav>
 
-        {/* Action Buttons */}
+        {/* Action Buttons — always render unauthenticated version on server, swap after mount */}
         <div className="flex items-center gap-3">
-          {token ? (
+          {isAuthed ? (
             <Btn size="sm" onClick={() => router.push('/dashboard')}>
               Go to Dashboard <ArrowRight size={13} />
             </Btn>
@@ -118,7 +122,7 @@ export default function LandingPage() {
             onClick={handleCTA}
             className="bg-gray-950 hover:bg-gray-800 text-white px-6 py-3 rounded-full text-sm font-semibold shadow-md shadow-gray-200 transition-all duration-200 flex items-center gap-1.5 hover:translate-y-[-1px] active:translate-y-0 cursor-pointer"
           >
-            {token ? 'Go to Dashboard' : "Let's begin"} <ArrowRight size={14} />
+            {isAuthed ? 'Go to Dashboard' : "Let's begin"} <ArrowRight size={14} />
           </button>
           <button
             onClick={() => {
