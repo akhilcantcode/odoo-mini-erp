@@ -52,7 +52,7 @@ export class PurchaseController {
       if (!companyId) {
         return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
-      const order = await this.service.create(req.body, companyId);
+      const order = await this.service.create(req.body, companyId, (req as any).user?.id);
       res.status(201).json(order);
     } catch (err: any) {
       if (err.name === 'ZodError') {
@@ -71,7 +71,7 @@ export class PurchaseController {
       if (!companyId) {
         return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
-      const order = await this.service.confirm(req.params.id, companyId);
+      const order = await this.service.confirm(req.params.id, companyId, (req as any).user?.id);
       res.json(order);
     } catch (err: any) {
       if (err.statusCode) {
@@ -90,7 +90,7 @@ export class PurchaseController {
       if (!companyId) {
         return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
-      const order = await this.service.receive(req.params.id, companyId);
+      const order = await this.service.receive(req.params.id, companyId, (req as any).user?.id);
       res.json(order);
     } catch (err: any) {
       if (err.statusCode) {

@@ -5,6 +5,12 @@ export async function getSalesOrders(): Promise<SalesOrder[]> {
   return fetchApi('/sales');
 }
 
+export interface CreateSalesOrderResponse {
+  order: SalesOrder;
+  procuredMOs: { id: string; productName: string; quantity: number }[];
+  procuredPOs: { id: string; vendorName: string; itemsCount: number }[];
+}
+
 export async function createSalesOrder(data: {
   customerName: string;
   customerAddress?: string;
@@ -16,7 +22,7 @@ export async function createSalesOrder(data: {
       items: { productId: string; quantity: number }[];
     }[];
   };
-}): Promise<SalesOrder> {
+}): Promise<CreateSalesOrderResponse> {
   return fetchApi('/sales', {
     method: 'POST',
     body: JSON.stringify(data),

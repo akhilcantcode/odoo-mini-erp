@@ -70,7 +70,7 @@ export class ProductService {
   /**
    * Set (create or replace) the Bill of Materials for a product.
    */
-  async setBom(productId: string, data: unknown, companyId: string) {
+  async setBom(productId: string, data: unknown, companyId: string, userId?: string) {
     // Ensure product exists
     const product = await this.getById(productId, companyId);
     if (product.procurementType !== 'manufacture') {
@@ -92,7 +92,8 @@ export class ProductService {
       'SET',
       null,
       { productId: result.productId, itemsCount: parsed.items.length },
-      companyId
+      companyId,
+      userId
     );
 
     return result;

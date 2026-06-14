@@ -20,7 +20,7 @@ import { useToast } from '../layout';
 import { Btn, Card, Input, Select, EmptyState, StatusBadge } from '../../../components/ui';
 import {
   ShoppingCart, RefreshCw, Plus, Check, X, CheckCircle2,
-  AlertCircle, ShoppingBag
+  AlertCircle, ShoppingBag, Search, Clock, TrendingUp, LayoutGrid, List
 } from 'lucide-react';
 
 export default function SalesPage() {
@@ -31,6 +31,9 @@ export default function SalesPage() {
   const [usersList, setUsersList] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [showSearchBar, setShowSearchBar] = useState(true);
 
   // Form fields
   const [customer, setCustomer] = useState('');
@@ -57,6 +60,11 @@ export default function SalesPage() {
   const [showLogs, setShowLogs] = useState(false);
   const [orderLogs, setOrderLogs] = useState<AuditLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [procurementSummary, setProcurementSummary] = useState<{
+    orderId: string;
+    mos: { id: string; productName: string; quantity: number }[];
+    pos: { id: string; vendorName: string; itemsCount: number }[];
+  } | null>(null);
 
   const { user } = useAuthStore();
   const canConfirm = user?.roles?.some((r) => r === 'SALES' || r === 'OWNER' || r === 'ADMIN');
@@ -144,13 +152,23 @@ export default function SalesPage() {
       });
 
       if (checkResult.available) {
-        await createSalesOrder({
+        const result = await createSalesOrder({
           customerName: customer,
           customerAddress: customerAddress || undefined,
           responsiblePersonId: responsiblePersonId || undefined,
           items: itemsPayload
         });
-        toast('Order placed successfully', 'success');
+        
+        if (result.procuredMOs?.length > 0) {
+          setProcurementSummary({
+            orderId: result.order.id,
+            mos: result.procuredMOs,
+            pos: [],
+          });
+        } else {
+          toast('Order placed successfully', 'success');
+        }
+        
         setShowForm(false);
         setCustomer('');
         setCustomerAddress('');
@@ -211,7 +229,7 @@ export default function SalesPage() {
         items,
       }));
 
-      await createSalesOrder({
+      const result = await createSalesOrder({
         customerName: customer,
         customerAddress: customerAddress || undefined,
         responsiblePersonId: responsiblePersonId || undefined,
@@ -221,7 +239,16 @@ export default function SalesPage() {
         },
       });
 
-      toast('Order and replenishment POs placed', 'success');
+      if (result.procuredMOs?.length > 0 || result.procuredPOs?.length > 0) {
+        setProcurementSummary({
+          orderId: result.order.id,
+          mos: result.procuredMOs,
+          pos: result.procuredPOs,
+        });
+      } else {
+        toast('Order and replenishment POs placed', 'success');
+      }
+      
       setReplenishmentRequirements(null);
       setShowForm(false);
       setCustomer('');
@@ -238,8 +265,8 @@ export default function SalesPage() {
   const fetchOrderLogs = async (orderId: string) => {
     setLoadingLogs(true);
     try {
-      const logs = await getAuditLogs({ entityId: orderId });
-      setOrderLogs(logs);
+      const logsRes = await getAuditLogs({ entityId: orderId });
+      setOrderLogs(logsRes.data);
     } catch (err) {
       console.error('Failed to fetch order logs', err);
     }
@@ -441,19 +468,255 @@ export default function SalesPage() {
     );
   }
 
+  // Helper methods
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const getAvatarColor = (name: string) => {
+    const colors = [
+      'bg-blue-100 text-blue-700',
+      'bg-purple-100 text-purple-700',
+      'bg-emerald-100 text-emerald-700',
+      'bg-amber-100 text-amber-700',
+      'bg-rose-100 text-rose-700',
+      'bg-cyan-100 text-cyan-700',
+      'bg-indigo-100 text-indigo-700',
+      'bg-teal-100 text-teal-700',
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  // Computed stats
+  const totalOrders = orders.length;
+  const draftOrders = orders.filter((o) => o.status === 'draft').length;
+  const confirmedOrders = orders.filter((o) => o.status === 'confirmed').length;
+  const totalDeliveredRevenue = orders
+    .filter((o) => o.status === 'delivered')
+    .reduce((sum, o) => {
+      const orderTotal = o.items?.reduce((s, item) => {
+        const price = item.product?.salesPrice || 0;
+        return s + item.quantity * price;
+      }, 0) || 0;
+      return sum + orderTotal;
+    }, 0);
+
+  const statCards = [
+    {
+      label: 'TOTAL SALES ORDERS',
+      value: totalOrders,
+      sub: 'All registered orders',
+      icon: <ShoppingCart size={18} />,
+      iconBg: 'bg-blue-50 text-blue-500',
+      borderColor: 'border-blue-100',
+    },
+    {
+      label: 'DRAFT ORDERS',
+      value: draftOrders,
+      sub: 'Awaiting confirmation',
+      icon: <Clock size={18} />,
+      iconBg: 'bg-amber-50 text-amber-500',
+      borderColor: 'border-amber-100',
+    },
+    {
+      label: 'CONFIRMED',
+      value: confirmedOrders,
+      sub: 'Ready for delivery',
+      icon: <CheckCircle2 size={18} />,
+      iconBg: 'bg-violet-50 text-violet-500',
+      borderColor: 'border-violet-100',
+    },
+    {
+      label: 'DELIVERED REVENUE',
+      value: `$${totalDeliveredRevenue.toFixed(2)}`,
+      sub: 'Completed sales value',
+      icon: <TrendingUp size={18} />,
+      iconBg: 'bg-emerald-50 text-emerald-500',
+      borderColor: 'border-emerald-100',
+    },
+  ];
+
+  // Search filter
+  const filteredOrders = orders.filter((o) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      o.customerName.toLowerCase().includes(query) ||
+      o.id.toLowerCase().includes(query) ||
+      (o.responsiblePerson?.name || '').toLowerCase().includes(query) ||
+      o.items?.some((item) => (item.product?.name || '').toLowerCase().includes(query))
+    );
+  });
+
+  const renderSalesKanbanCard = (o: SalesOrder) => {
+    const initials = getInitials(o.customerName);
+    const avatarColor = getAvatarColor(o.customerName);
+    const totalAmount = o.items?.reduce((sum, item) => {
+      const price = item.product?.salesPrice || 0;
+      return sum + item.quantity * price;
+    }, 0) || 0;
+
+    return (
+      <div
+        key={o.id}
+        className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md hover:border-sky-300 transition-all duration-200 flex flex-col justify-between min-h-[220px] cursor-pointer group"
+        onClick={() => setSelectedOrder(o)}
+      >
+        <div className="space-y-3">
+          <div className="flex justify-between items-start gap-2">
+            <span className="font-mono text-xs font-bold text-sky-600 group-hover:underline">
+              {o.id.slice(0, 13)}...
+            </span>
+            <span className="text-xs text-gray-400 font-mono">
+              {new Date(o.createdAt).toLocaleDateString()}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold ${avatarColor} flex-shrink-0`}>
+              {initials}
+            </div>
+            <div>
+              <span className="font-bold text-gray-900 text-sm block leading-tight">
+                {o.customerName}
+              </span>
+              <span className="text-[10px] text-gray-400 block mt-0.5">
+                Responsible: {o.responsiblePerson?.name || 'Unassigned'}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-xs text-gray-500 space-y-1 mt-2 border-t border-gray-100 pt-3">
+            {o.items?.map((item, idx) => (
+              <div key={item.id || idx} className="truncate">
+                • {item.product?.name} (×{item.quantity})
+              </div>
+            )) || 'No items'}
+          </div>
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-gray-100 space-y-2">
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <span className="text-sm font-bold font-mono text-gray-900">${totalAmount.toFixed(2)}</span>
+            <StatusBadge status={o.status} />
+          </div>
+
+          {/* Quick Actions */}
+          {o.status === 'draft' && canConfirm && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAction(o.id, 'confirm');
+              }}
+              disabled={acting === o.id}
+              className="w-full py-2 text-center bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800 font-bold rounded-lg text-xs transition"
+            >
+              Confirm Order
+            </button>
+          )}
+          {o.status === 'confirmed' && canDeliver && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAction(o.id, 'deliver');
+              }}
+              disabled={acting === o.id}
+              className="w-full py-2 text-center bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 font-bold rounded-lg text-xs transition"
+            >
+              Deliver Items
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Sales Orders</h2>
-        <div className="flex gap-2">
+    <div className="space-y-5 animate-fade-in">
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-100">
+            <ShoppingCart size={22} className="text-sky-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight">Sales Orders</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Manage customer orders, MTO flows, and shipment delivery.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           <Btn variant="ghost" size="sm" onClick={refresh}>
             <RefreshCw size={14} />
+          </Btn>
+          <Btn variant={showSearchBar ? "primary" : "secondary"} size="sm" onClick={() => setShowSearchBar(!showSearchBar)} title="Toggle search bar">
+            <Search size={14} />
+          </Btn>
+          <Btn variant="secondary" size="sm" onClick={() => setViewMode(viewMode === 'list' ? 'kanban' : 'list')} title={viewMode === 'list' ? 'Switch to Kanban' : 'Switch to List'}>
+            {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
+            <span className="ml-1 hidden sm:inline">{viewMode === 'list' ? 'Kanban' : 'List'}</span>
           </Btn>
           <Btn size="sm" onClick={() => setShowForm(!showForm)}>
             <Plus size={14} /> New Sales Order
           </Btn>
         </div>
       </div>
+
+      {/* ── Stat Cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {statCards.map((card, idx) => (
+          <div
+            key={card.label}
+            className={`relative overflow-hidden bg-white rounded-xl border ${card.borderColor} p-4 hover:shadow-md transition-all duration-300 group`}
+            style={{ animationDelay: `${idx * 60}ms` }}
+          >
+            <div className="flex items-start justify-between mb-2">
+              <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">{card.label}</p>
+              <div className={`p-1.5 rounded-lg ${card.iconBg} transition-transform duration-300 group-hover:scale-110`}>
+                {card.icon}
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900 tracking-tight">{card.value}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{card.sub}</p>
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-current to-transparent opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
+          </div>
+        ))}
+      </div>
+
+      {/* ── Search Row (Collapsible) ── */}
+      {showSearchBar && (
+        <div className="flex items-center justify-between animate-fade-in bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+          <div className="relative w-80">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by reference or contacts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition placeholder:text-gray-400 shadow-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Synced just now · {filteredOrders.length} of {orders.length} orders
+          </div>
+        </div>
+      )}
 
       {/* Create Form */}
       {showForm && (
@@ -581,7 +844,7 @@ export default function SalesPage() {
         <div className="flex justify-center py-16">
           <RefreshCw size={20} className="animate-spin-slow text-sky-500" />
         </div>
-      ) : orders.length === 0 ? (
+      ) : filteredOrders.length === 0 && orders.length === 0 ? (
         <Card>
           <EmptyState
             icon={<ShoppingCart size={20} />}
@@ -589,88 +852,122 @@ export default function SalesPage() {
             description="Create a sales order to get started."
           />
         </Card>
-      ) : (
+      ) : filteredOrders.length === 0 ? (
         <Card>
+          <EmptyState
+            icon={<Search size={20} />}
+            title="No results found"
+            description={`No sales orders match "${searchQuery}"`}
+          />
+        </Card>
+      ) : viewMode === 'list' ? (
+        /* List View */
+        <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
-                  <th className="px-5 py-3">Order ID</th>
-                  <th className="px-5 py-3">Customer</th>
-                  <th className="px-5 py-3">Responsible Person</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Items</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                <tr className="bg-gradient-to-r from-gray-50/80 to-gray-50/40 text-left text-xs text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">
+                  <th className="px-5 py-3.5">Order ID</th>
+                  <th className="px-5 py-3.5">Customer</th>
+                  <th className="px-5 py-3.5">Responsible Person</th>
+                  <th className="px-5 py-3.5">Status</th>
+                  <th className="px-5 py-3.5">Items</th>
+                  <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {orders.map((o) => (
-                  <tr key={o.id} className="hover:bg-sky-50/30 transition">
-                    <td className="px-5 py-3">
-                      <button
-                        onClick={() => setSelectedOrder(o)}
-                        className="font-mono text-xs text-sky-600 hover:text-sky-800 hover:underline font-semibold cursor-pointer"
-                      >
-                        {o.id}
-                      </button>
-                    </td>
-                    <td className="px-5 py-3 font-medium text-gray-800">{o.customerName}</td>
-                    <td className="px-5 py-3 text-gray-600 text-xs font-medium">
-                      {o.responsiblePerson?.name || 'Unassigned'}
-                    </td>
-                    <td className="px-5 py-3">
-                      <StatusBadge status={o.status} />
-                    </td>
-                    <td className="px-5 py-3 text-gray-600">
-                      <div className="flex flex-col gap-0.5">
-                        {o.items?.map((item, idx) => (
-                          <span key={item.id || idx} className="text-xs text-gray-500">
-                            • {item.product?.name || 'Unknown Product'} (×{item.quantity})
-                          </span>
-                        )) || 'No items'}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <div className="flex justify-end gap-2 items-center">
-                        {o.status === 'draft' &&
-                          (canConfirm ? (
-                            <Btn
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => handleAction(o.id, 'confirm')}
-                              disabled={acting === o.id}
-                            >
-                              Confirm
-                            </Btn>
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">Awaiting Confirmation</span>
-                          ))}
-                        {o.status === 'confirmed' &&
-                          (canDeliver ? (
-                            <Btn
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => handleAction(o.id, 'deliver')}
-                              disabled={acting === o.id}
-                            >
-                              Deliver
-                            </Btn>
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">Awaiting Delivery</span>
-                          ))}
-                        {o.status === 'delivered' && (
-                          <span className="text-xs text-emerald-500 font-medium flex items-center gap-1">
-                            <CheckCircle2 size={12} /> Delivered
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filteredOrders.map((o) => {
+                  const initials = getInitials(o.customerName);
+                  const avatarColor = getAvatarColor(o.customerName);
+                  return (
+                    <tr key={o.id} className="hover:bg-sky-50/30 transition-colors duration-150 group">
+                      <td className="px-5 py-3.5">
+                        <button
+                          onClick={() => setSelectedOrder(o)}
+                          className="font-mono text-xs text-sky-600 hover:text-sky-800 hover:underline font-bold cursor-pointer"
+                        >
+                          {o.id.slice(0, 13)}...
+                        </button>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${avatarColor} transition-transform duration-200 group-hover:scale-105 flex-shrink-0`}
+                          >
+                            {initials}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900 leading-tight">{o.customerName}</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5 font-mono">
+                              Created {new Date(o.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className="text-gray-600 font-medium text-xs">
+                          {o.responsiblePerson?.name || 'Unassigned'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <StatusBadge status={o.status} />
+                      </td>
+                      <td className="px-5 py-3.5 text-gray-600">
+                        <div className="flex flex-col gap-0.5">
+                          {o.items?.map((item, idx) => (
+                            <span key={item.id || idx} className="text-xs text-gray-500">
+                              • {item.product?.name || 'Unknown Product'} (×{item.quantity})
+                            </span>
+                          )) || 'No items'}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex justify-end gap-2 items-center">
+                          {o.status === 'draft' &&
+                            (canConfirm ? (
+                              <Btn
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleAction(o.id, 'confirm')}
+                                disabled={acting === o.id}
+                              >
+                                Confirm
+                              </Btn>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">Awaiting Confirmation</span>
+                            ))}
+                          {o.status === 'confirmed' &&
+                            (canDeliver ? (
+                              <Btn
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleAction(o.id, 'deliver')}
+                                disabled={acting === o.id}
+                              >
+                                Deliver
+                              </Btn>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">Awaiting Delivery</span>
+                            ))}
+                          {o.status === 'delivered' && (
+                            <span className="text-xs text-emerald-500 font-medium flex items-center gap-1">
+                              <CheckCircle2 size={12} /> Delivered
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </Card>
+      ) : (
+        /* Kanban View */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-fade-in w-full">
+          {filteredOrders.map((o) => renderSalesKanbanCard(o))}
+        </div>
       )}
 
       {/* Replenishment Modal */}
@@ -761,6 +1058,115 @@ export default function SalesPage() {
                 </Btn>
                 <Btn size="sm" onClick={handleConfirmReplenishment} disabled={saving}>
                   {saving ? <RefreshCw size={12} className="animate-spin-slow" /> : 'Confirm & Create'}
+                </Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Procurement Summary Modal */}
+      {procurementSummary && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setProcurementSummary(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-lg mx-4 overflow-hidden animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-gray-50 bg-gradient-to-r from-emerald-50/50 to-sky-50/30 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                  <CheckCircle2 size={22} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">Order & Procurement Placed</h3>
+                  <p className="text-xs text-gray-400 font-medium">Successfully processed items and documents</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setProcurementSummary(null)}
+                className="p-1.5 hover:bg-gray-200/50 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-6">
+              <p className="text-xs text-gray-500 font-medium">
+                The procurement engine automatically ran the check and created the following documents:
+              </p>
+
+              <div className="space-y-4">
+                {/* Sales Order Item */}
+                <div className="flex gap-4 items-start p-4 bg-sky-50/40 rounded-2xl border border-sky-100/50">
+                  <div className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center text-sky-600 mt-0.5">
+                    <ShoppingCart size={16} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold text-gray-900">Sales Order Created</h4>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 bg-sky-100/50 px-2 py-0.5 rounded-full">
+                        {procurementSummary.orderId}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Draft Sales Order created successfully.</p>
+                  </div>
+                </div>
+
+                {/* Manufacturing Orders (MOs) */}
+                {procurementSummary.mos && procurementSummary.mos.length > 0 && (
+                  <div className="flex gap-4 items-start p-4 bg-amber-50/30 rounded-2xl border border-amber-100/50">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 mt-0.5">
+                      <RefreshCw size={16} className="animate-spin-slow" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-xs font-semibold text-gray-900">Auto-Created Manufacturing Orders</h4>
+                      <p className="text-[11px] text-gray-400 mt-0.5 mb-2">
+                        Shortage of manufactured goods triggered MOs:
+                      </p>
+                      <div className="space-y-1.5">
+                        {procurementSummary.mos.map((mo) => (
+                          <div key={mo.id} className="flex justify-between items-center text-[11px] bg-white border border-amber-100/40 px-2.5 py-1 rounded-lg">
+                            <span className="font-semibold text-gray-700">{mo.id} ({mo.productName})</span>
+                            <span className="text-gray-400">Qty: {mo.quantity}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Purchase Orders (POs) */}
+                {procurementSummary.pos && procurementSummary.pos.length > 0 && (
+                  <div className="flex gap-4 items-start p-4 bg-emerald-50/30 rounded-2xl border border-emerald-100/50">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600 mt-0.5">
+                      <ShoppingBag size={16} />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-xs font-semibold text-gray-900">Created Purchase Orders</h4>
+                      <p className="text-[11px] text-gray-400 mt-0.5 mb-2">
+                        Replenishment orders created for materials:
+                      </p>
+                      <div className="space-y-1.5">
+                        {procurementSummary.pos.map((po) => (
+                          <div key={po.id} className="flex justify-between items-center text-[11px] bg-white border border-emerald-100/40 px-2.5 py-1 rounded-lg">
+                            <span className="font-semibold text-gray-700">{po.id} ({po.vendorName})</span>
+                            <span className="text-gray-400">{po.itemsCount} items</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-gray-50">
+                <Btn size="sm" onClick={() => setProcurementSummary(null)}>
+                  Got it
                 </Btn>
               </div>
             </div>

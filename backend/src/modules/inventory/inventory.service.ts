@@ -28,10 +28,10 @@ export class InventoryService {
   /**
    * Perform a manual inventory adjustment.
    */
-  async adjust(data: unknown, companyId: string) {
+  async adjust(data: unknown, companyId: string, userId?: string) {
     const parsed = AdjustInventorySchema.parse(data);
     const result = await this.repository.adjust(parsed.productId, parsed.changeQty, parsed.reference, companyId);
-    await this.auditService.log('Inventory', parsed.productId, 'ADJUST', null, { changeQty: parsed.changeQty, onHandQty: result.onHandQty }, companyId);
+    await this.auditService.log('Inventory', parsed.productId, 'ADJUST', null, { changeQty: parsed.changeQty, onHandQty: result.onHandQty }, companyId, userId);
     return result;
   }
 }

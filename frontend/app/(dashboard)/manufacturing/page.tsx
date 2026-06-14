@@ -21,7 +21,7 @@ import type { AuditLog } from '../../../features/audit/types';
 import { useToast } from '../layout';
 import { Btn, Card, Input, Select, EmptyState, StatusBadge } from '../../../components/ui';
 import {
-  Factory, RefreshCw, Plus, Check, Play, CheckCircle2, X
+  Factory, RefreshCw, Plus, Check, Play, CheckCircle2, X, Search, Clock, LayoutGrid, List
 } from 'lucide-react';
 
 export default function ManufacturingPage() {
@@ -37,6 +37,9 @@ export default function ManufacturingPage() {
   const [assigneeId, setAssigneeId] = useState('');
   const [saving, setSaving] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [showSearchBar, setShowSearchBar] = useState(true);
 
   // Detail view state
   const [selectedOrder, setSelectedOrder] = useState<ManufacturingOrder | null>(null);
@@ -125,8 +128,8 @@ export default function ManufacturingPage() {
   const fetchOrderLogs = async (orderId: string) => {
     setLoadingLogs(true);
     try {
-      const logs = await getAuditLogs({ entityId: orderId });
-      setOrderLogs(logs);
+      const logsRes = await getAuditLogs({ entityId: orderId });
+      setOrderLogs(logsRes.data);
     } catch (err) {
       console.error('Failed to fetch MO logs', err);
     }
@@ -430,19 +433,264 @@ export default function ManufacturingPage() {
     );
   }
 
+  // Helper methods
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const getAvatarColor = (name: string) => {
+    const colors = [
+      'bg-blue-100 text-blue-700',
+      'bg-purple-100 text-purple-700',
+      'bg-emerald-100 text-emerald-700',
+      'bg-amber-100 text-amber-700',
+      'bg-rose-100 text-rose-700',
+      'bg-cyan-100 text-cyan-700',
+      'bg-indigo-100 text-indigo-700',
+      'bg-teal-100 text-teal-700',
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  // Computed stats
+  const totalMOs = orders.length;
+  const draftMOs = orders.filter((o) => o.status === 'draft').length;
+  const inProgressMOs = orders.filter((o) => o.status === 'in_progress').length;
+  const completedMOs = orders.filter((o) => o.status === 'completed' || o.status === 'done').length;
+
+  const statCards = [
+    {
+      label: 'TOTAL MOs',
+      value: totalMOs,
+      sub: 'All manufacturing runs',
+      icon: <Factory size={18} />,
+      iconBg: 'bg-blue-50 text-blue-500',
+      borderColor: 'border-blue-100',
+    },
+    {
+      label: 'DRAFT MOs',
+      value: draftMOs,
+      sub: 'Unconfirmed templates',
+      icon: <Clock size={18} />,
+      iconBg: 'bg-amber-50 text-amber-500',
+      borderColor: 'border-amber-100',
+    },
+    {
+      label: 'IN PROGRESS',
+      value: inProgressMOs,
+      sub: 'Active on shop floor',
+      icon: <Play size={18} />,
+      iconBg: 'bg-violet-50 text-violet-500',
+      borderColor: 'border-violet-100',
+    },
+    {
+      label: 'COMPLETED',
+      value: completedMOs,
+      sub: 'Produced & stocked',
+      icon: <CheckCircle2 size={18} />,
+      iconBg: 'bg-emerald-50 text-emerald-500',
+      borderColor: 'border-emerald-100',
+    },
+  ];
+
+  // Search filter
+  const filteredOrders = orders.filter((o) => {
+    const query = searchQuery.toLowerCase();
+    const prodName = o.product?.name || '';
+    const assigneeName = o.assignee?.name || '';
+    return (
+      o.id.toLowerCase().includes(query) ||
+      prodName.toLowerCase().includes(query) ||
+      assigneeName.toLowerCase().includes(query)
+    );
+  });
+
+  const renderManufacturingKanbanCard = (o: ManufacturingOrder) => {
+    const productName = o.product?.name || 'Unknown Product';
+    const initials = getInitials(productName);
+    const avatarColor = getAvatarColor(productName);
+
+    return (
+      <div
+        key={o.id}
+        className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md hover:border-sky-300 transition-all duration-200 flex flex-col justify-between min-h-[220px] cursor-pointer group"
+        onClick={() => setSelectedOrder(o)}
+      >
+        <div className="space-y-3">
+          <div className="flex justify-between items-start gap-2">
+            <span className="font-mono text-xs font-bold text-sky-600 group-hover:underline">
+              {o.id.slice(0, 13)}...
+            </span>
+            <span className="text-xs text-gray-400 font-mono">
+              {new Date(o.createdAt).toLocaleDateString()}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold ${avatarColor} flex-shrink-0`}>
+              {initials}
+            </div>
+            <div>
+              <span className="font-bold text-gray-900 text-sm block leading-tight">
+                {productName}
+              </span>
+              <span className="text-[10px] text-gray-400 block mt-0.5">
+                Assignee: {o.assignee?.name || 'Unassigned'}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-xs text-gray-500 space-y-1 mt-2 border-t border-gray-100 pt-3">
+            <div className="flex justify-between">
+              <span>Quantity:</span>
+              <span className="font-bold text-gray-700">{o.quantity} pcs</span>
+            </div>
+            {o.scheduleDate && (
+              <div className="flex justify-between">
+                <span>Schedule:</span>
+                <span>{new Date(o.scheduleDate).toLocaleDateString()}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-gray-100 space-y-2">
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <span className="text-xs text-gray-400 font-mono">Status:</span>
+            <StatusBadge status={o.status} />
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex flex-col gap-1.5 mt-1.5">
+            {o.status === 'draft' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAction(o.id, 'confirm');
+                }}
+                disabled={acting === o.id}
+                className="w-full py-2 text-center bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800 font-bold rounded-lg text-xs transition"
+              >
+                Confirm MO
+              </button>
+            )}
+            {(o.status === 'draft' || o.status === 'confirmed') && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAction(o.id, 'start');
+                }}
+                disabled={acting === o.id}
+                className="w-full py-2 text-center bg-violet-50 text-violet-700 hover:bg-violet-100 hover:text-violet-800 font-bold rounded-lg text-xs transition"
+              >
+                Start Production
+              </button>
+            )}
+            {o.status === 'in_progress' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAction(o.id, 'complete');
+                }}
+                disabled={acting === o.id}
+                className="w-full py-2 text-center bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 font-bold rounded-lg text-xs transition"
+              >
+                Complete / Produce
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Manufacturing Orders</h2>
-        <div className="flex gap-2">
+    <div className="space-y-5 animate-fade-in">
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100">
+            <Factory size={22} className="text-blue-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight">Manufacturing Orders</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Track shop floor production, component consumption, and work orders.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           <Btn variant="ghost" size="sm" onClick={refresh}>
             <RefreshCw size={14} />
+          </Btn>
+          <Btn variant={showSearchBar ? "primary" : "secondary"} size="sm" onClick={() => setShowSearchBar(!showSearchBar)} title="Toggle search bar">
+            <Search size={14} />
+          </Btn>
+          <Btn variant="secondary" size="sm" onClick={() => setViewMode(viewMode === 'list' ? 'kanban' : 'list')} title={viewMode === 'list' ? 'Switch to Kanban' : 'Switch to List'}>
+            {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
+            <span className="ml-1 hidden sm:inline">{viewMode === 'list' ? 'Kanban' : 'List'}</span>
           </Btn>
           <Btn size="sm" onClick={() => setShowForm(!showForm)}>
             <Plus size={14} /> New MO
           </Btn>
         </div>
       </div>
+
+      {/* ── Stat Cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {statCards.map((card, idx) => (
+          <div
+            key={card.label}
+            className={`relative overflow-hidden bg-white rounded-xl border ${card.borderColor} p-4 hover:shadow-md transition-all duration-300 group`}
+            style={{ animationDelay: `${idx * 60}ms` }}
+          >
+            <div className="flex items-start justify-between mb-2">
+              <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">{card.label}</p>
+              <div className={`p-1.5 rounded-lg ${card.iconBg} transition-transform duration-300 group-hover:scale-110`}>
+                {card.icon}
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900 tracking-tight">{card.value}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{card.sub}</p>
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-current to-transparent opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
+          </div>
+        ))}
+      </div>
+
+      {/* ── Search Row (Collapsible) ── */}
+      {showSearchBar && (
+        <div className="flex items-center justify-between animate-fade-in bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+          <div className="relative w-80">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search product, MO ID, or assignee..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition placeholder:text-gray-400 shadow-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Synced just now · {filteredOrders.length} of {orders.length} orders
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <Card className="p-5 animate-fade-in">
@@ -510,7 +758,7 @@ export default function ManufacturingPage() {
         <div className="flex justify-center py-16">
           <RefreshCw size={20} className="animate-spin-slow text-sky-500" />
         </div>
-      ) : orders.length === 0 ? (
+      ) : filteredOrders.length === 0 && orders.length === 0 ? (
         <Card>
           <EmptyState
             icon={<Factory size={20} />}
@@ -518,82 +766,117 @@ export default function ManufacturingPage() {
             description="Create an MO for a product with a Bill of Materials."
           />
         </Card>
-      ) : (
+      ) : filteredOrders.length === 0 ? (
         <Card>
+          <EmptyState
+            icon={<Search size={20} />}
+            title="No results found"
+            description={`No manufacturing orders match "${searchQuery}"`}
+          />
+        </Card>
+      ) : viewMode === 'list' ? (
+        /* List View */
+        <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50/80 text-left text-xs text-gray-500 font-medium">
-                  <th className="px-5 py-3">MO Number</th>
-                  <th className="px-5 py-3">Product</th>
-                  <th className="px-5 py-3">Qty</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Created</th>
-                  <th className="px-5 py-3"></th>
+                <tr className="bg-gradient-to-r from-gray-50/80 to-gray-50/40 text-left text-xs text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-100">
+                  <th className="px-5 py-3.5">MO Number</th>
+                  <th className="px-5 py-3.5">Product</th>
+                  <th className="px-5 py-3.5">Qty</th>
+                  <th className="px-5 py-3.5">Status</th>
+                  <th className="px-5 py-3.5">Created</th>
+                  <th className="px-5 py-3.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {orders.map((o) => (
-                  <tr key={o.id} className="hover:bg-sky-50/30 transition">
-                    <td className="px-5 py-3">
-                      <button
-                        onClick={() => setSelectedOrder(o)}
-                        className="font-mono text-xs text-sky-600 hover:text-sky-800 hover:underline font-semibold cursor-pointer"
-                      >
-                        {o.id}
-                      </button>
-                    </td>
-                    <td className="px-5 py-3 text-gray-700">{o.product?.name || o.productId.slice(0, 8) + '…'}</td>
-                    <td className="px-5 py-3 text-gray-700">{o.quantity}</td>
-                    <td className="px-5 py-3">
-                      <StatusBadge status={o.status} />
-                    </td>
-                    <td className="px-5 py-3 text-gray-400 text-xs">{new Date(o.createdAt).toLocaleDateString()}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex gap-1">
-                        {o.status === 'draft' && (
-                          <Btn
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleAction(o.id, 'confirm')}
-                            disabled={acting === o.id}
+                {filteredOrders.map((o) => {
+                  const productName = o.product?.name || 'Unknown Product';
+                  const initials = getInitials(productName);
+                  const avatarColor = getAvatarColor(productName);
+                  return (
+                    <tr key={o.id} className="hover:bg-sky-50/30 transition-colors duration-150 group">
+                      <td className="px-5 py-3.5">
+                        <button
+                          onClick={() => setSelectedOrder(o)}
+                          className="font-mono text-xs text-sky-600 hover:text-sky-800 hover:underline font-bold cursor-pointer"
+                        >
+                          {o.id.slice(0, 13)}...
+                        </button>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${avatarColor} transition-transform duration-200 group-hover:scale-105 flex-shrink-0`}
                           >
-                            Confirm
-                          </Btn>
-                        )}
-                        {(o.status === 'draft' || o.status === 'confirmed') && (
-                          <Btn
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleAction(o.id, 'start')}
-                            disabled={acting === o.id}
-                          >
-                            <Play size={12} /> Start
-                          </Btn>
-                        )}
-                        {o.status === 'in_progress' && (
-                          <Btn size="sm" onClick={() => handleAction(o.id, 'complete')} disabled={acting === o.id}>
-                            <CheckCircle2 size={12} /> Complete
-                          </Btn>
-                        )}
-                        {(o.status === 'completed' || o.status === 'done') && (
-                          <span className="text-xs text-emerald-500 font-medium flex items-center gap-1">
-                            <CheckCircle2 size={12} /> Done
-                          </span>
-                        )}
-                        {o.status === 'cancelled' && (
-                          <span className="text-xs text-red-500 font-medium flex items-center gap-1">
-                            <X size={12} /> Cancelled
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                            {initials}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900 leading-tight">{productName}</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5 font-mono">
+                              Assignee: {o.assignee?.name || 'Unassigned'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-gray-750 font-medium tabular-nums">{o.quantity}</td>
+                      <td className="px-5 py-3.5">
+                        <StatusBadge status={o.status} />
+                      </td>
+                      <td className="px-5 py-3.5 text-gray-400 text-xs tabular-nums">
+                        {new Date(o.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex gap-1 justify-end">
+                          {o.status === 'draft' && (
+                            <Btn
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleAction(o.id, 'confirm')}
+                              disabled={acting === o.id}
+                            >
+                              Confirm
+                            </Btn>
+                          )}
+                          {(o.status === 'draft' || o.status === 'confirmed') && (
+                            <Btn
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleAction(o.id, 'start')}
+                              disabled={acting === o.id}
+                            >
+                              <Play size={12} className="inline mr-0.5" /> Start
+                            </Btn>
+                          )}
+                          {o.status === 'in_progress' && (
+                            <Btn size="sm" onClick={() => handleAction(o.id, 'complete')} disabled={acting === o.id}>
+                              <CheckCircle2 size={12} className="inline mr-0.5" /> Complete
+                            </Btn>
+                          )}
+                          {(o.status === 'completed' || o.status === 'done') && (
+                            <span className="text-xs text-emerald-500 font-medium flex items-center gap-1">
+                              <CheckCircle2 size={12} /> Done
+                            </span>
+                          )}
+                          {o.status === 'cancelled' && (
+                            <span className="text-xs text-red-500 font-medium flex items-center gap-1">
+                              <X size={12} /> Cancelled
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </Card>
+      ) : (
+        /* Kanban View */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-fade-in w-full">
+          {filteredOrders.map((o) => renderManufacturingKanbanCard(o))}
+        </div>
       )}
     </div>
   );

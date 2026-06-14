@@ -33,7 +33,7 @@ export class InventoryController {
       if (!companyId) {
         return res.status(400).json({ message: 'x-company-id header or authentication token is required' });
       }
-      const result = await this.service.adjust(req.body, companyId);
+      const result = await this.service.adjust(req.body, companyId, (req as any).user?.id);
       res.json(result);
     } catch (err: any) {
       if (err.name === 'ZodError') {
